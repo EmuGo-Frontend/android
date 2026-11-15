@@ -34,7 +34,7 @@ final class Screenshots {
   /** Writes a PNG on a background thread. The frame is enlarged by an integer factor. */
   static void save(Activity activity, Library library, Bitmap frame, String title) {
     if (frame == null) {
-      PocketNotice.show(activity, "No frame to capture yet");
+      PocketNotice.show(activity, R.string.no_frame_to_capture_yet);
       return;
     }
     Bitmap source = frame.copy(Bitmap.Config.ARGB_8888, false);
@@ -42,7 +42,8 @@ final class Screenshots {
       String message;
       try {
         Uri folder = library.ensureFolder(FOLDER);
-        if (folder == null) throw new java.io.IOException("Choose a ROMs folder first");
+        if (folder == null)
+          throw new java.io.IOException(activity.getString(R.string.choose_a_roms_folder_first));
         int scale = Math.max(1, 720 / Math.max(1, source.getHeight()));
         Bitmap scaled = scale == 1 ? source
             : Bitmap.createScaledBitmap(
@@ -55,9 +56,9 @@ final class Screenshots {
         try (OutputStream out = activity.getContentResolver().openOutputStream(target, "wt")) {
           scaled.compress(Bitmap.CompressFormat.PNG, 100, out);
         }
-        message = "Screenshot saved";
+        message = activity.getString(R.string.screenshot_saved);
       } catch (Exception e) {
-        message = L10n.format(activity, "Screenshot failed: %s", String.valueOf(e.getMessage()));
+        message = activity.getString(R.string.screenshot_failed_x, String.valueOf(e.getMessage()));
       }
       String text = message;
       activity.runOnUiThread(() -> PocketNotice.show(activity, text));
@@ -129,8 +130,8 @@ final class Screenshots {
       }
       Library.Item item = items.get(index[0]);
       caption.setText(label(item) + "   " + (index[0] + 1) + "/" + items.size() + "   ·   "
-          + buttonName(library, "X") + " " + L10n.text(activity, "Delete") + "   "
-          + buttonName(library, "Y") + " " + L10n.text(activity, "Share"));
+          + buttonName(library, "X") + " " + activity.getString(R.string.delete) + "   "
+          + buttonName(library, "Y") + " " + activity.getString(R.string.share));
       new Thread(() -> {
         Bitmap bitmap = null;
         try (InputStream in = activity.getContentResolver().openInputStream(item.uri)) {
@@ -196,20 +197,21 @@ final class Screenshots {
       Runnable reload, Runnable changed) {
     Library.Item item = items.get(index[0]);
     new PocketDialog.Builder(activity)
-        .setTitle("Delete screenshot?")
+        .setTitle(R.string.delete_screenshot)
         .setMessage(label(item))
-        .setPositiveButton("Delete", (d, w) -> {
-          try {
-            DocumentsContract.deleteDocument(activity.getContentResolver(), item.uri);
-            items.remove(index[0]);
-            index[0] = Math.max(0, Math.min(index[0], items.size() - 1));
-            changed.run();
-            reload.run();
-          } catch (Exception e) {
-            PocketNotice.show(activity, String.valueOf(e.getMessage()));
-          }
-        })
-        .setNegativeButton("Cancel", null)
+        .setPositiveButton(R.string.delete,
+            (d, w) -> {
+              try {
+                DocumentsContract.deleteDocument(activity.getContentResolver(), item.uri);
+                items.remove(index[0]);
+                index[0] = Math.max(0, Math.min(index[0], items.size() - 1));
+                changed.run();
+                reload.run();
+              } catch (Exception e) {
+                PocketNotice.show(activity, String.valueOf(e.getMessage()));
+              }
+            })
+        .setNegativeButton(R.string.cancel, null)
         .show();
   }
 
@@ -225,7 +227,7 @@ final class Screenshots {
                       .putExtra(Intent.EXTRA_STREAM, item.uri)
                       .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
     try {
-      activity.startActivity(Intent.createChooser(send, L10n.text(activity, "Share")));
+      activity.startActivity(Intent.createChooser(send, activity.getString(R.string.share)));
     } catch (Exception e) {
       PocketNotice.show(activity, String.valueOf(e.getMessage()));
     }

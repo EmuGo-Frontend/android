@@ -95,11 +95,24 @@ public class MainActivity extends Activity {
   private boolean leftTriggerKeyDown, rightTriggerKeyDown;
   private boolean leftTriggerAxisDown, rightTriggerAxisDown;
 
+  private Screen languageReturn;
+  @Override
+  protected void attachBaseContext(Context base) {
+    super.attachBaseContext(L10n.wrap(base));
+  }
+  @Override
+  protected void onSaveInstanceState(Bundle state) {
+    super.onSaveInstanceState(state);
+    if (languageReturn != null)
+      state.putString("languageReturn", languageReturn.name());
+  }
   @Override
   public void onCreate(Bundle b) {
     super.onCreate(b);
     library = new Library(this);
-    L10n.setLanguage(library.get("language", "System"));
+    // settings.json may carry a different language from another device.
+    if (L10n.remember(this, library.get("language", "System")))
+      handler.post(this::recreate);
     try {
       font = android.graphics.Typeface.createFromAsset(getAssets(), "fonts/nunito.ttf");
       boldFont = android.graphics.Typeface.createFromAsset(getAssets(), "fonts/nunito-bold.ttf");
@@ -107,6 +120,9 @@ public class MainActivity extends Activity {
     }
     immersive();
     render();
+    String returnTo = b == null ? null : b.getString("languageReturn");
+    if (returnTo != null)
+      showScreen(Screen.valueOf(returnTo));
     banner = new Banner(this);
     Foreground.register(getApplication());
     Foreground.addListener(new Foreground.Listener() {
@@ -218,15 +234,18 @@ public class MainActivity extends Activity {
     if (top != null && top.getChildCount() > 0)
       drawStatus();
     if (screen == Screen.SYNCTHING && syncthingStatus != null)
-      syncthingStatus.setText(L10n.text(this, syncthingStatusText()));
+      syncthingStatus.setText(syncthingStatusText());
     handler.postDelayed(this::tick, 1000);
   }
   private int dp(float v) {
     return (int) (v * getResources().getDisplayMetrics().density + .5f);
   }
+  private TextView text(int value, int size, boolean bold) {
+    return text(getString(value), size, bold);
+  }
   private TextView text(String value, int size, boolean bold) {
     TextView t = new TextView(this);
-    t.setText(L10n.text(this, value));
+    t.setText(value);
     t.setTextColor(fg);
     t.setTextSize(size);
     t.setTypeface(bold ? boldFont : font);
@@ -290,23 +309,27 @@ public class MainActivity extends Activity {
     hintBar.setVisibility(library.get("controlHints", true) ? View.VISIBLE : View.GONE);
     controlHints.removeAllViews();
     String layout = library.get("layout", "Nintendo");
-    controlHint("DPAD", "Move");
-    controlHint(layout.equals("PlayStation") ? "PS_CROSS" : "A", "Select");
-    controlHint(layout.equals("PlayStation") ? "PS_CIRCLE" : "B", "Back");
+    controlHint("DPAD", R.string.move);
+    controlHint(layout.equals("PlayStation") ? "PS_CROSS" : "A", R.string.select);
+    controlHint(layout.equals("PlayStation") ? "PS_CIRCLE" : "B", R.string.back);
     controlHint(layout.equals("PlayStation") ? "R1"
-        : layout.equals("Nintendo") ? "R" : "RB", "Infocenter");
+            : layout.equals("Nintendo")      ? "R"
+                                             : "RB",
+        R.string.infocenter);
     controlHint(layout.equals("PlayStation") ? "L2/R2"
-        : layout.equals("Nintendo") ? "ZL/ZR" : "LT/RT", "Jump");
+            : layout.equals("Nintendo")      ? "ZL/ZR"
+                                             : "LT/RT",
+        R.string.jump);
     if (screen == Screen.INFOCENTER)
-      controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", "Clear");
+      controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", R.string.clear);
     if (screen == Screen.GAMES || screen == Screen.FAVOURITES)
-      controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", "Favourite");
+      controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", R.string.favourite);
     if (screen == Screen.RA_PROFILE || screen == Screen.RA_GAME) {
-      controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", "Reload");
-      controlHint(layout.equals("PlayStation") ? "OPTIONS" : "START", "Play");
+      controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", R.string.reload);
+      controlHint(layout.equals("PlayStation") ? "OPTIONS" : "START", R.string.play);
     }
   }
-  private void controlHint(String button, String label) {
+  private void controlHint(String button, int label) {
     LinearLayout item = new LinearLayout(this);
     item.setGravity(Gravity.CENTER_VERTICAL);
     LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(-2, -1);
@@ -389,7 +412,10 @@ public class MainActivity extends Activity {
     params.rightMargin = dp(5);
     top.addView(icon, params);
   }
-  private void title(String name, String subtitle) {
+  private void title(int name) {
+    title(getString(name));
+  }
+  private void title(String name) {
     menuGeneration++;
     heading.removeAllViews();
     heading.setVisibility(View.VISIBLE);
@@ -407,6 +433,15 @@ public class MainActivity extends Activity {
   private void space(int height) {
     View v = new View(this);
     body.addView(v, new LinearLayout.LayoutParams(1, dp(height)));
+  }
+  private LinearLayout row(int name, Runnable action) {
+    return row(getString(name), "", action);
+  }
+  private LinearLayout row(int name, String detail, Runnable action) {
+    return row(getString(name), detail, action);
+  }
+  private LinearLayout row(int name, int detail, Runnable action) {
+    return row(getString(name), getString(detail), action);
   }
   private LinearLayout row(String name, String detail, Runnable action) {
     LinearLayout card = new LinearLayout(this);
@@ -438,7 +473,7 @@ public class MainActivity extends Activity {
       ImageView heartIcon = new ImageView(this);
       heartIcon.setImageResource(
           getResources().getIdentifier("tabler_heart_filled", "drawable", getPackageName()));
-      heartIcon.setContentDescription(L10n.text(this, "Favourite"));
+      heartIcon.setContentDescription(getString(R.string.favourite));
       LinearLayout.LayoutParams heartParams = new LinearLayout.LayoutParams(dp(16), dp(16));
       heartParams.rightMargin = dp(9);
       card.addView(heartIcon, heartParams); // stays pink, also on the selection pill
@@ -447,8 +482,8 @@ public class MainActivity extends Activity {
     n.setSingleLine(true);
     n.setEllipsize(android.text.TextUtils.TruncateAt.END);
     card.addView(n);
-    card.setContentDescription(detail == null || detail.isEmpty()
-        ? L10n.text(this, name) : L10n.text(this, name) + ". " + L10n.text(this, detail));
+    card.setContentDescription(
+        detail == null || detail.isEmpty() ? n.getText() : n.getText() + ". " + detail);
     int selectedText = Color.luminance(accent) > 0.5 ? 0xff101112 : 0xfff7f7f5;
     ImageView icon = backIcon;
     card.setOnClickListener(v -> {
@@ -502,6 +537,9 @@ public class MainActivity extends Activity {
     if (row.isFocusable()) autoFocus(row);
     return row;
   }
+  private void message(int value) {
+    message(getString(value));
+  }
   private void message(String value) {
     TextView text = text(value, 15, false);
     text.setTextColor(muted);
@@ -554,27 +592,29 @@ public class MainActivity extends Activity {
     setBodyWide(false);
     scroll.scrollTo(0, 0);
     if (library.root == null)
-      row("Choose ROMs folder", "EmulationStation folders such as gb, gba, nes, psx",
-          this::pickRoms);
+      row(R.string.choose_roms_folder, R.string.choose_roms_folder_hint, this::pickRoms);
     else
-      row("Library", "", this::systems);
-    if (library.root != null) row("Screenshots", "", () -> {
-      screenshotFocus = 0;
-      screenshots();
-    });
+      row(R.string.library, "", this::systems);
+    if (library.root != null)
+      row(R.string.screenshots, "", () -> {
+        screenshotFocus = 0;
+        screenshots();
+      });
     row("RetroAchievements", "", this::openRetroAchievements);
-    row("Android", "", this::openApps);
-    row("Settings", "", this::settings);
+    row(R.string.android, "", this::openApps);
+    row(R.string.settings, "", this::settings);
   }
   private void systems() {
     screen = Screen.SYSTEMS;
     body.removeAllViews();
-    title("Library", "Systems");
+    title(R.string.library);
     List<Library.SystemInfo> systems = library.visibleSystems();
     if (systems.isEmpty())
-      row(library.isScanning() && !library.hasIndex() ? "Scanning ROMs" : "No systems found", "",
+      row(library.isScanning() && !library.hasIndex() ? R.string.scanning_roms
+                                                      : R.string.no_systems_found,
           this::pickRoms);
-    if (!library.favouriteGames().isEmpty()) row("Favourites", "", this::favourites);
+    if (!library.favouriteGames().isEmpty())
+      row(R.string.favourites, "", this::favourites);
     for (Library.SystemInfo s : systems) row(s.name, "", () -> showSystem(s));
   }
   private final Map<View, Library.Game> gameRows = new HashMap<>();
@@ -584,10 +624,10 @@ public class MainActivity extends Activity {
     screen = Screen.FAVOURITES;
     body.removeAllViews();
     gameRows.clear();
-    title("Favourites", "");
+    title(R.string.favourites);
     List<Library.Game> games = library.favouriteGames();
     if (games.isEmpty()) {
-      message("Press X on a game to add it to your favourites");
+      message(R.string.favourites_empty_hint);
       return;
     }
     for (Library.Game game : games)
@@ -603,8 +643,9 @@ public class MainActivity extends Activity {
     rememberSelection(focused);
     int previousScroll = scroll.getScrollY();
     boolean added = library.toggleFavourite(game);
-    PocketNotice.show(this, L10n.format(this,
-        added ? "Added %s to favourites" : "Removed %s from favourites", game.title));
+    PocketNotice.show(this,
+        getString(added ? R.string.added_x_to_favourites : R.string.removed_x_from_favourites,
+            game.title));
     if (screen == Screen.FAVOURITES) {
       favourites();
       restoreSelection(Screen.FAVOURITES);
@@ -625,7 +666,7 @@ public class MainActivity extends Activity {
     List<Library.Game> games = library.games(s);
     int pages = Math.max(1, (games.size() + GAMES_PER_PAGE - 1) / GAMES_PER_PAGE);
     gamePage = Math.min(gamePage, pages - 1);
-    title(s.name, "");
+    title(s.name);
     gameRows.clear();
     java.util.Set<String> favourites = library.favourites();
     int end = Math.min(games.size(), (gamePage + 1) * GAMES_PER_PAGE);
@@ -636,9 +677,9 @@ public class MainActivity extends Activity {
     }
     if (pages > 1) {
       if (gamePage > 0)
-        row("Previous page", "", () -> turnGamePage(-1));
+        row(R.string.previous_page, "", () -> turnGamePage(-1));
       if (gamePage + 1 < pages)
-        row("Next page", "", () -> turnGamePage(1));
+        row(R.string.next_page, "", () -> turnGamePage(1));
     }
   }
   private void turnGamePage(int direction) {
@@ -723,40 +764,40 @@ public class MainActivity extends Activity {
   private void settings() {
     screen = Screen.SETTINGS;
     body.removeAllViews();
-    title("Settings", "");
-    row("Appearance", "", this::appearanceSettings);
-    row("Emulation", "", this::emulationSettings);
-    row("Library", "", this::librarySettings);
-    row("Controls", "", this::controlSettings);
-    row("Integrations", "", this::integrationSettings);
-    row("System", "", this::systemSettings);
-    row("About", "", this::about);
+    title(R.string.settings);
+    row(R.string.appearance, "", this::appearanceSettings);
+    row(R.string.emulation, "", this::emulationSettings);
+    row(R.string.library, "", this::librarySettings);
+    row(R.string.controls, "", this::controlSettings);
+    row(R.string.integrations, "", this::integrationSettings);
+    row(R.string.system, "", this::systemSettings);
+    row(R.string.about, "", this::about);
   }
   private void appearanceSettings() {
     screen = Screen.APPEARANCE;
     body.removeAllViews();
-    title("Appearance", "");
-    row("Theme", library.get("theme", "Default"),
+    title(R.string.appearance);
+    row(R.string.theme, L10n.option(this, library.get("theme", "Default")),
         ()
-            -> choose("Theme",
+            -> choose(R.string.theme,
                 new String[] {"Default", "Nord", "Dracula", "Catppuccin", "Monaspace",
                     "Tokyo Night", "Ayu", "Dainty", "Houston", "Matcha", "TechDweeb"},
                 "theme"));
-    row("Color mode", library.get("scheme", "System"),
-        () -> choose("Color mode", new String[] {"System", "Dark", "Light"}, "scheme"));
+    row(R.string.color_mode, L10n.option(this, library.get("scheme", "System")),
+        () -> choose(R.string.color_mode, new String[] {"System", "Dark", "Light"}, "scheme"));
     if (library.get("theme", "Default").equals("Catppuccin"))
-      row("Catppuccin flavor", library.get("catppuccin", "Mocha"),
+      row(R.string.catppuccin_flavor, L10n.option(this, library.get("catppuccin", "Mocha")),
           ()
-              -> choose(
-                  "Flavor", new String[] {"Latte", "Frappe", "Macchiato", "Mocha"}, "catppuccin"));
+              -> choose(R.string.flavor, new String[] {"Latte", "Frappe", "Macchiato", "Mocha"},
+                  "catppuccin"));
     if (library.get("theme", "Default").equals("TechDweeb"))
-      row("TechDweeb color", library.get("techColor", "orange"),
+      row(R.string.techdweeb_color, L10n.option(this, library.get("techColor", "orange")),
           ()
-              -> choose("Wallpaper",
+              -> choose(R.string.wallpaper,
                   new String[] {"orange", "purple", "black", "red", "pink", "grey", "green", "cyan",
                       "blue", "dmg"},
                   "techColor"));
-    row("Custom background", "", () -> {
+    row(R.string.custom_background, "", () -> {
       Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
                           .setType("image/*")
                           .addCategory(Intent.CATEGORY_OPENABLE);
@@ -766,65 +807,67 @@ public class MainActivity extends Activity {
   private void librarySettings() {
     screen = Screen.LIBRARY_SETTINGS;
     body.removeAllViews();
-    title("Library", "");
-    row("ROMs folder", "", this::pickRoms);
-    row("Rescan ROMs", "", () -> {
+    title(R.string.library);
+    row(R.string.roms_folder, "", this::pickRoms);
+    row(R.string.rescan_roms, "", () -> {
       library.scanAsync(this::refreshIndexedScreen);
-      PocketNotice.show(this, "Scanning ROMs");
+      PocketNotice.show(this, R.string.scanning_roms);
     });
-    toggle("Hide file extensions", "hideExtensions", true);
-    toggle("Merge .cue and .bin", "mergeCue", true);
-    toggle("Remove brackets", "removeBrackets", true);
-    toggle("Fix title articles", "fixArticles", true);
-    row("Import RetroArch saves", "", this::importSaves);
+    toggle(R.string.hide_file_extensions, "hideExtensions", true);
+    toggle(R.string.merge_cue_and_bin, "mergeCue", true);
+    toggle(R.string.remove_brackets, "removeBrackets", true);
+    toggle(R.string.fix_title_articles, "fixArticles", true);
+    row(R.string.import_retroarch_saves, "", this::importSaves);
   }
   private void emulationSettings() {
     screen = Screen.EMULATION;
     body.removeAllViews();
-    title("Emulation", "");
-    row("Display modes", "", this::displayModes);
-    booleanOption("Automatic states", "autoStates", false);
-    booleanOption("Boot intros", "bootIntros", true);
-    booleanOption("Use RetroArch", "useRetroArch", false);
+    title(R.string.emulation);
+    row(R.string.display_modes, "", this::displayModes);
+    booleanOption(R.string.automatic_states, "autoStates", false);
+    booleanOption(R.string.boot_intros, "bootIntros", true);
+    booleanOption(R.string.use_retroarch, "useRetroArch", false);
   }
   private void displayModes() {
     screen = Screen.DISPLAY_MODES;
     body.removeAllViews();
-    title("Display modes", "");
+    title(R.string.display_modes);
     row("Game Boy", "", this::gameBoyDisplay);
     row("Game Boy Color", "", this::gameBoyColorDisplay);
   }
   private void gameBoyDisplay() {
     screen = Screen.GAME_BOY_DISPLAY;
     body.removeAllViews();
-    title("Game Boy", "");
-    booleanOption("Green palette", "gbGreen", true);
-    booleanOption("Dot matrix", "gbDotMatrix", true);
-    booleanOption("LCD blending", "gbLcd", true);
+    title("Game Boy");
+    booleanOption(R.string.green_palette, "gbGreen", true);
+    booleanOption(R.string.dot_matrix, "gbDotMatrix", true);
+    booleanOption(R.string.lcd_blending, "gbLcd", true);
   }
   private void gameBoyColorDisplay() {
     screen = Screen.GAME_BOY_COLOR_DISPLAY;
     body.removeAllViews();
-    title("Game Boy Color", "");
-    booleanOption("Screen filter", "gbcScreenFilter", true);
-    booleanOption("LCD blending", "gbcLcd", true);
+    title("Game Boy Color");
+    booleanOption(R.string.screen_filter, "gbcScreenFilter", true);
+    booleanOption(R.string.lcd_blending, "gbcLcd", true);
   }
   private void controlSettings() {
     screen = Screen.CONTROLS;
     body.removeAllViews();
-    title("Controls", "");
-    row("Controller labels", library.get("layout", "Nintendo"),
-        () -> choose("Button layout", new String[] {"Nintendo", "Xbox", "PlayStation"}, "layout"));
-    row("Game menu shortcut", library.get("menuCombo", "Start + Select"),
+    title(R.string.controls);
+    row(R.string.controller_labels, L10n.option(this, library.get("layout", "Nintendo")),
         ()
-            -> choose(
-                "Shortcut", new String[] {"Start + Select", "L3 + R3", "Select + X"}, "menuCombo"));
-    booleanOption("Control hints", "controlHints", true);
+            -> choose(R.string.button_layout, new String[] {"Nintendo", "Xbox", "PlayStation"},
+                "layout"));
+    row(R.string.game_menu_shortcut, L10n.option(this, library.get("menuCombo", "Start + Select")),
+        ()
+            -> choose(R.string.shortcut, new String[] {"Start + Select", "L3 + R3", "Select + X"},
+                "menuCombo"));
+    booleanOption(R.string.control_hints, "controlHints", true);
   }
   private void integrationSettings() {
     screen = Screen.INTEGRATIONS;
     body.removeAllViews();
-    title("Integrations", "");
+    title(R.string.integrations);
     row("RetroAchievements", "", this::openRetroAchievementsSettings);
     row("Discord", "", this::discordSettings);
     row("Syncthing", "", this::openSyncthingSettings);
@@ -855,28 +898,33 @@ public class MainActivity extends Activity {
   private void retroAchievementsProfile() {
     screen = Screen.RA_PROFILE;
     body.removeAllViews();
-    title("RetroAchievements", "");
+    title("RetroAchievements");
     if (raProfile == null || raGames == null) {
-      message("Loading…");
+      message(R.string.loading);
       loadRetroAchievementsProfile(false);
       return;
     }
     raRowGames.clear();
     RaProfile.Profile p = raProfile;
-    String points = L10n.format(this, "%s hardcore points", String.valueOf(p.hardcorePoints))
-        + "  ·  " + L10n.format(this, "%s softcore points", String.valueOf(p.softcorePoints));
-    richRow(new RichRow.Entry(p.user, points,
-                p.unreadMessages > 0 ? L10n.format(this, "%s messages",
-                    String.valueOf(p.unreadMessages)) : null,
-                p.avatarUrl, false).rounded(),
+    String points = getString(R.string.x_hardcore_points, String.valueOf(p.hardcorePoints))
+        + "  ·  " + getString(R.string.x_softcore_points, String.valueOf(p.softcorePoints));
+    richRow(new RichRow
+                .Entry(p.user, points,
+                    p.unreadMessages > 0
+                        ? getString(R.string.x_messages, String.valueOf(p.unreadMessages))
+                        : null,
+                    p.avatarUrl, false)
+                .rounded(),
         () -> {});
-    row("Settings", "", this::openRetroAchievementsSettings);
-    body.addView(RichRow.header(this, ThemePalette.resolve(this, library), boldFont, "Games"));
-    if (raGames.isEmpty()) message("No progress on supported systems yet");
+    row(R.string.settings, "", this::openRetroAchievementsSettings);
+    body.addView(
+        RichRow.header(this, ThemePalette.resolve(this, library), boldFont, R.string.games));
+    if (raGames.isEmpty())
+      message(R.string.ra_no_progress);
     for (RaProfile.Game game : raGames) {
       int unlocked = Math.max(game.unlocked, game.unlockedHardcore);
-      String detail = L10n.text(this, RaProfile.consoleName(game.console)) + "  ·  "
-          + L10n.format(this, "%s of %s achievements unlocked", String.valueOf(unlocked),
+      String detail = RaProfile.consoleName(game.console) + "  ·  "
+          + getString(R.string.x_of_x_achievements_unlocked, String.valueOf(unlocked),
               String.valueOf(game.total));
       String percent = game.total == 0 ? "" : Math.round(unlocked * 100f / game.total) + "%";
       View gameRow = richRow(new RichRow.Entry(game.title, detail, percent, game.iconUrl, false), () -> {
@@ -918,8 +966,8 @@ public class MainActivity extends Activity {
           raRefreshing = false;
           if (quiet || screen != Screen.RA_PROFILE || raProfile != null) return;
           body.removeAllViews();
-          message(L10n.format(this, "Could not load profile: %s", String.valueOf(e.getMessage())));
-          row("Settings", "", this::openRetroAchievementsSettings);
+          message(getString(R.string.could_not_load_profile_x, String.valueOf(e.getMessage())));
+          row(R.string.settings, "", this::openRetroAchievementsSettings);
         });
       }
     }, "EmuGo-ra-profile").start();
@@ -961,13 +1009,13 @@ public class MainActivity extends Activity {
     if (game == null) return;
     Library.Game local = localGame(game);
     if (local == null) {
-      PocketNotice.show(this, L10n.format(this, "%s is not in your library", game.title));
+      PocketNotice.show(this, getString(R.string.x_is_not_in_your_library, game.title));
       return;
     }
     launch(local);
   }
   private void reloadRetroAchievements() {
-    PocketNotice.show(this, "Reloading");
+    PocketNotice.show(this, R.string.reloading);
     if (screen == Screen.RA_GAME && raGame != null) {
       raAchievementCache.remove(raGame.id);
       raAchievements = null;
@@ -983,9 +1031,9 @@ public class MainActivity extends Activity {
     }
     screen = Screen.RA_GAME;
     body.removeAllViews();
-    title(raGame.title, "");
+    title(raGame.title);
     if (raAchievements == null) {
-      message("Loading…");
+      message(R.string.loading);
       int generation = menuGeneration;
       RaProfile.Game game = raGame;
       String user = library.get("raUser", ""), token = library.get("raToken", "");
@@ -1005,8 +1053,8 @@ public class MainActivity extends Activity {
           runOnUiThread(() -> {
             if (menuGeneration != generation || screen != Screen.RA_GAME) return;
             body.removeAllViews();
-            message(L10n.format(this, "Could not load achievements: %s",
-                String.valueOf(e.getMessage())));
+            message(
+                getString(R.string.could_not_load_achievements_x, String.valueOf(e.getMessage())));
           });
         }
       }, "EmuGo-ra-game").start();
@@ -1015,15 +1063,15 @@ public class MainActivity extends Activity {
     boolean lockedHeader = false;
     ThemePalette colors = ThemePalette.resolve(this, library);
     if (!raAchievements.isEmpty() && raAchievements.get(0).unlocked)
-      body.addView(RichRow.header(this, colors, boldFont, "Unlocked"));
+      body.addView(RichRow.header(this, colors, boldFont, R.string.unlocked));
     for (RaProfile.Achievement a : raAchievements) {
       if (!a.unlocked && !lockedHeader) {
         lockedHeader = true;
-        body.addView(RichRow.header(this, colors, boldFont, "Locked"));
+        body.addView(RichRow.header(this, colors, boldFont, R.string.locked));
       }
-      String detail = a.description + (a.hardcore ? "  ·  " + L10n.text(this, "Hardcore") : "");
-      richRow(new RichRow.Entry(a.title, detail, L10n.format(this, "%s points",
-                  String.valueOf(a.points)),
+      String detail = a.description + (a.hardcore ? "  ·  " + getString(R.string.hardcore) : "");
+      richRow(
+          new RichRow.Entry(a.title, detail, getString(R.string.x_points, String.valueOf(a.points)),
               a.unlocked ? a.badgeUrl : a.lockedBadgeUrl, !a.unlocked),
           () -> {});
     }
@@ -1031,40 +1079,43 @@ public class MainActivity extends Activity {
   private void retroAchievementsSettings() {
     screen = Screen.RETROACHIEVEMENTS;
     body.removeAllViews();
-    title("RetroAchievements", "");
+    title("RetroAchievements");
     String user = library.get("raUser", "");
     boolean signedIn = !library.get("raToken", "").isEmpty();
     if (!signedIn) {
-      row("Sign in", "", () -> RetroAchievements.signIn(this, library, () -> {
+      row(R.string.sign_in, "", () -> RetroAchievements.signIn(this, library, () -> {
         retroAchievementsSettings();
         restoreSelection(Screen.RETROACHIEVEMENTS);
       }));
       return;
     }
-    row(L10n.format(this, "Signed in as %s", user), "", this::openRetroAchievements);
-    booleanOption("Notifications", "raNotifications", true);
-    row("Sign out", "", () -> new PocketDialog.Builder(this)
-        .setTitle("Sign out of RetroAchievements?")
-        .setPositiveButton("Sign out", (d, w) -> {
-          library.put("raToken", "");
-          RaBridge.signOut();
-          raProfile = null;
-          raGames = null;
-          raProfileUser = null;
-          raAchievementCache.clear();
-          PocketNotice.show(this, "Signed out");
-          focusedPositions.remove(Screen.RETROACHIEVEMENTS);
-          retroAchievementsSettings();
-        })
-        .setNegativeButton("Cancel", null)
-        .show());
+    row(getString(R.string.signed_in_as_x, user), "", this::openRetroAchievements);
+    booleanOption(R.string.notifications, "raNotifications", true);
+    row(R.string.sign_out, "",
+        ()
+            -> new PocketDialog.Builder(this)
+                   .setTitle(R.string.sign_out_of_retroachievements)
+                   .setPositiveButton(R.string.sign_out,
+                       (d, w) -> {
+                         library.put("raToken", "");
+                         RaBridge.signOut();
+                         raProfile = null;
+                         raGames = null;
+                         raProfileUser = null;
+                         raAchievementCache.clear();
+                         PocketNotice.show(this, R.string.signed_out);
+                         focusedPositions.remove(Screen.RETROACHIEVEMENTS);
+                         retroAchievementsSettings();
+                       })
+                   .setNegativeButton(R.string.cancel, null)
+                   .show());
   }
   private int screenshotFocus;
   /** Switch-style album: a full-width thumbnail grid, newest first. */
   private void screenshots() {
     screen = Screen.SCREENSHOTS;
     body.removeAllViews();
-    title("Screenshots", "");
+    title(R.string.screenshots);
     setBodyWide(true);
     int generation = menuGeneration;
     new Thread(() -> {
@@ -1072,12 +1123,12 @@ public class MainActivity extends Activity {
       runOnUiThread(() -> {
         if (menuGeneration != generation || screen != Screen.SCREENSHOTS) return;
         if (items.isEmpty()) {
-          TextView empty = text("No screenshots yet", 17, false);
+          TextView empty = text(R.string.no_screenshots_yet, 17, false);
           empty.setTextColor(muted);
           empty.setGravity(Gravity.CENTER);
           empty.setPadding(0, dp(80), 0, 0);
           body.addView(empty, new LinearLayout.LayoutParams(-1, -2));
-          TextView hint = text("Take one from the pause menu of a built-in game", 14, false);
+          TextView hint = text(R.string.screenshots_empty_hint, 14, false);
           hint.setTextColor(muted);
           hint.setGravity(Gravity.CENTER);
           hint.setPadding(0, dp(6), 0, 0);
@@ -1202,39 +1253,41 @@ public class MainActivity extends Activity {
   private void discordSettings() {
     screen = Screen.DISCORD;
     body.removeAllViews();
-    title("Discord", "");
+    title("Discord");
     if (!DiscordPresence.available()) {
-      message("The Discord SDK is not included in this build");
+      message(R.string.discord_sdk_missing);
       return;
     }
     if (!DiscordPresence.signedIn()) {
-      row("Sign in with Discord", "", () -> DiscordPresence.signIn(this));
-      message("Shows the game you are playing on your Discord profile");
+      row(R.string.sign_in_with_discord, "", () -> DiscordPresence.signIn(this));
+      message(R.string.discord_sign_in_hint);
       return;
     }
     String name = DiscordPresence.userName();
-    row(DiscordPresence.connected()
-            ? (name.isEmpty() ? L10n.text(this, "Connected")
-                              : L10n.format(this, "Signed in as %s", name))
-            : L10n.text(this, "Connecting…"),
+    row(DiscordPresence.connected() ? (name.isEmpty() ? getString(R.string.connected)
+                                                      : getString(R.string.signed_in_as_x, name))
+                                    : getString(R.string.connecting),
         "", () -> {});
     boolean presence = library.get("discordPresence", true);
-    row(L10n.text(this, "Rich Presence") + ": " + L10n.text(this, presence ? "On" : "Off"), "",
-        () -> {
+    row(getString(R.string.rich_presence) + ": " + getString(presence ? R.string.on : R.string.off),
+        "", () -> {
           library.put("discordPresence", !presence);
           DiscordPresence.apply(this);
           discordSettings();
           restoreSelection(Screen.DISCORD, false);
         });
-    row("Sign out", "", () -> new PocketDialog.Builder(this)
-        .setTitle("Sign out of Discord?")
-        .setPositiveButton("Sign out", (d, w) -> {
-          DiscordPresence.signOut();
-          focusedPositions.remove(Screen.DISCORD);
-          discordSettings();
-        })
-        .setNegativeButton("Cancel", null)
-        .show());
+    row(R.string.sign_out, "",
+        ()
+            -> new PocketDialog.Builder(this)
+                   .setTitle(R.string.sign_out_of_discord)
+                   .setPositiveButton(R.string.sign_out,
+                       (d, w) -> {
+                         DiscordPresence.signOut();
+                         focusedPositions.remove(Screen.DISCORD);
+                         discordSettings();
+                       })
+                   .setNegativeButton(R.string.cancel, null)
+                   .show());
   }
   private void openSyncthingSettings() {
     syncthingOrigin = screen;
@@ -1247,23 +1300,23 @@ public class MainActivity extends Activity {
   private void syncthingSettings() {
     screen = Screen.SYNCTHING;
     body.removeAllViews();
-    title("Syncthing", "");
+    title("Syncthing");
     space(18);
-    TextView label = text("Status", 14, true);
+    TextView label = text(R.string.status, 14, true);
     label.setTextColor(muted);
     label.setPadding(dp(14), 0, dp(14), dp(5));
     body.addView(label);
     syncthingStatus = text(syncthingStatusText(), 17, false);
     syncthingStatus.setPadding(dp(14), 0, dp(14), dp(22));
     body.addView(syncthingStatus);
-    row("Open", "", this::openSyncthing);
+    row(R.string.open, "", this::openSyncthing);
   }
   private String syncthingStatusText() {
     if (getPackageManager().getLaunchIntentForPackage(NotificationService.SYNCTHING_PACKAGE) == null)
-      return "Not installed";
+      return getString(R.string.not_installed);
     android.service.notification.StatusBarNotification[] notices = NotificationService.current();
     if (notices == null)
-      return "Notification access unavailable";
+      return getString(R.string.notification_access_unavailable);
     android.service.notification.StatusBarNotification latest = null;
     for (android.service.notification.StatusBarNotification item : notices) {
       if (!NotificationService.SYNCTHING_PACKAGE.equals(item.getPackageName())) continue;
@@ -1275,75 +1328,81 @@ public class MainActivity extends Activity {
         latest = item;
     }
     if (latest == null)
-      return "No status notification";
+      return getString(R.string.no_status_notification);
     android.os.Bundle extras = latest.getNotification().extras;
     String title = String.valueOf(extras.getCharSequence(android.app.Notification.EXTRA_TITLE, ""));
     String detail = String.valueOf(extras.getCharSequence(android.app.Notification.EXTRA_TEXT, ""));
-    if (detail.isEmpty()) return title.isEmpty() ? "No status notification" : title;
+    if (detail.isEmpty())
+      return title.isEmpty() ? getString(R.string.no_status_notification) : title;
     if (title.isEmpty() || title.equals(detail)) return detail;
     return title + "\n" + detail;
   }
   private void systemSettings() {
     screen = Screen.SYSTEM_SETTINGS;
     body.removeAllViews();
-    title("System", "");
-    row("Language", library.get("language", "System"),
-        () -> choose("Language", new String[] {"System", "English", "Deutsch"}, "language"));
-    row("Second screen", library.get("secondScreen", "Off"),
+    title(R.string.system);
+    row(R.string.language, L10n.option(this, library.get("language", "System")),
+        () -> choose(R.string.language, new String[] {"System", "English", "Deutsch"}, "language"));
+    row(R.string.second_screen, L10n.option(this, library.get("secondScreen", "Off")),
         ()
-            -> choose("EmuGo! on second screen",
+            -> choose(R.string.emugo_on_second_screen,
                 new String[] {"Off", "Primary", "Secondary", "Both"}, "secondScreen"));
-    booleanOption("Notification banners", "notificationBanners", true);
-    row("Set as default launcher", "", this::requestHome);
-    row("Android system settings", "", () -> startActivity(new Intent(Settings.ACTION_SETTINGS)));
-    row("Check for updates", "", () -> UpdateChecker.check(this, true));
+    booleanOption(R.string.notification_banners, "notificationBanners", true);
+    row(R.string.set_as_default_launcher, "", this::requestHome);
+    row(R.string.android_system_settings, "",
+        () -> startActivity(new Intent(Settings.ACTION_SETTINGS)));
+    row(R.string.check_for_updates, "", () -> UpdateChecker.check(this, true));
   }
   private void about() {
     screen = Screen.ABOUT;
     body.removeAllViews();
-    title("About", "");
-    richRow(new RichRow.Entry("EmuGo! " + Version.name(this), L10n.text(this, "Check for updates"),
+    title(R.string.about);
+    richRow(new RichRow.Entry("EmuGo! " + Version.name(this), getString(R.string.check_for_updates),
                 null, null, false),
         () -> UpdateChecker.check(this, true));
-    row("What's new", "", this::whatsNew);
-    row("Device info", "", this::deviceInfo);
-    row("Installed cores", "", this::installedCores);
-    row("Storage", "", this::storage);
-    row("Source code", "", () -> openUrl(AboutInfo.REPOSITORY));
-    row("Report a problem", "", this::reportProblem);
-    row("Credits", "", this::credits);
-    row("OSS licenses", "", this::licenses);
+    row(R.string.whats_new, "", this::whatsNew);
+    row(R.string.device_info, "", this::deviceInfo);
+    row(R.string.installed_cores, "", this::installedCores);
+    row(R.string.storage, "", this::storage);
+    row(R.string.source_code, "", () -> openUrl(AboutInfo.REPOSITORY));
+    row(R.string.report_a_problem, "", this::reportProblem);
+    row(R.string.credits, "", this::credits);
+    row(R.string.oss_licenses, "", this::licenses);
   }
   private void whatsNew() {
-    PocketNotice.show(this, "Loading…");
+    PocketNotice.show(this, R.string.loading);
     new Thread(() -> {
       String text;
       try {
         text = AboutInfo.changelog(this);
       } catch (Exception e) {
-        text = e instanceof UpdateChecker.RateLimitException ? e.getMessage()
-            : L10n.format(this, "Could not load release notes: %s", String.valueOf(e.getMessage()));
+        text = e instanceof UpdateChecker.RateLimitException
+            ? e.getMessage()
+            : getString(R.string.could_not_load_release_notes_x, String.valueOf(e.getMessage()));
       }
       String notes = text;
-      runOnUiThread(() -> new PocketDialog.Builder(this)
-          .setTitle(L10n.format(this, "What's new in %s", Version.name(this)))
-          .setMessage(notes)
-          .setPositiveButton("Close", null)
-          .show());
+      runOnUiThread(()
+                        -> new PocketDialog.Builder(this)
+                               .setTitle(getString(R.string.whats_new_in_x, Version.name(this)))
+                               .setMessage(notes)
+                               .setPositiveButton(R.string.close, null)
+                               .show());
     }, "EmuGo-whats-new").start();
   }
   private void deviceInfo() {
     String info = AboutInfo.deviceInfo(this);
     new PocketDialog.Builder(this)
-        .setTitle("Device info")
+        .setTitle(R.string.device_info)
         .setMessage(info)
-        .setPositiveButton("Copy", (d, w) -> {
-          android.content.ClipboardManager clipboard =
-              (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-          clipboard.setPrimaryClip(android.content.ClipData.newPlainText("EmuGo! device info", info));
-          PocketNotice.show(this, "Copied");
-        })
-        .setNegativeButton("Close", null)
+        .setPositiveButton(R.string.copy,
+            (d, w) -> {
+              android.content.ClipboardManager clipboard =
+                  (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+              clipboard.setPrimaryClip(
+                  android.content.ClipData.newPlainText("EmuGo! device info", info));
+              PocketNotice.show(this, R.string.copied);
+            })
+        .setNegativeButton(R.string.close, null)
         .show();
   }
   /** Opens a new GitHub issue with the device details already filled in. */
@@ -1358,46 +1417,49 @@ public class MainActivity extends Activity {
   private void installedCores() {
     screen = Screen.CORES;
     body.removeAllViews();
-    title("Installed cores", "");
+    title(R.string.installed_cores);
     List<AboutInfo.Core> cores = AboutInfo.cores(this, library);
     if (cores.isEmpty()) {
-      message("No cores downloaded yet");
+      message(R.string.no_cores_downloaded_yet);
       return;
     }
     long unusedBytes = 0;
     for (AboutInfo.Core core : cores) if (!core.used) unusedBytes += core.bytes;
     if (unusedBytes > 0) {
       long freed = unusedBytes;
-      row(L10n.format(this, "Remove unused cores (%s)", AboutInfo.formatBytes(freed)), "", () -> {
+      row(getString(R.string.remove_unused_cores_x, AboutInfo.formatBytes(freed)), "", () -> {
         for (AboutInfo.Core core : cores)
-          if (!core.used) AboutInfo.removeCore(this, core.name);
-        PocketNotice.show(this, L10n.format(this, "Freed %s", AboutInfo.formatBytes(freed)));
+          if (!core.used)
+            AboutInfo.removeCore(this, core.name);
+        PocketNotice.show(this, getString(R.string.freed_x, AboutInfo.formatBytes(freed)));
         focusedPositions.remove(Screen.CORES);
         installedCores();
       });
     }
     for (AboutInfo.Core core : cores) {
       String detail = (core.systems.isEmpty() ? "" : core.systems + "  ·  ")
-          + L10n.text(this, core.used ? "In use" : "Not used by your library");
-      richRow(new RichRow.Entry(core.name, detail, AboutInfo.formatBytes(core.bytes), null,
-                  !core.used),
-          () -> new PocketDialog.Builder(this)
-              .setTitle(L10n.format(this, "Remove %s?", core.name))
-              .setMessage("It is downloaded again the next time a game needs it.")
-              .setPositiveButton("Remove", (d, w) -> {
-                AboutInfo.removeCore(this, core.name);
-                installedCores();
-                restoreSelection(Screen.CORES);
-              })
-              .setNegativeButton("Cancel", null)
-              .show());
+          + getString(core.used ? R.string.in_use : R.string.not_used_by_your_library);
+      richRow(
+          new RichRow.Entry(core.name, detail, AboutInfo.formatBytes(core.bytes), null, !core.used),
+          ()
+              -> new PocketDialog.Builder(this)
+                     .setTitle(getString(R.string.remove_x, core.name))
+                     .setMessage(R.string.remove_core_message)
+                     .setPositiveButton(R.string.remove,
+                         (d, w) -> {
+                           AboutInfo.removeCore(this, core.name);
+                           installedCores();
+                           restoreSelection(Screen.CORES);
+                         })
+                     .setNegativeButton(R.string.cancel, null)
+                     .show());
     }
   }
   private void storage() {
     screen = Screen.STORAGE;
     body.removeAllViews();
-    title("Storage", "");
-    message("Calculating…");
+    title(R.string.storage);
+    message(R.string.calculating);
     int generation = menuGeneration;
     new Thread(() -> {
       long cores = AboutInfo.size(AboutInfo.coresDir(this));
@@ -1407,33 +1469,34 @@ public class MainActivity extends Activity {
       runOnUiThread(() -> {
         if (menuGeneration != generation || screen != Screen.STORAGE) return;
         body.removeAllViews();
-        richRow(new RichRow.Entry(L10n.text(this, "Cores"),
-                    L10n.text(this, "Emulator cores, managed under Installed cores"),
-                    AboutInfo.formatBytes(cores), null, false),
+        richRow(
+            new RichRow.Entry(getString(R.string.cores), getString(R.string.storage_cores_detail),
+                AboutInfo.formatBytes(cores), null, false),
             this::installedCores);
-        richRow(new RichRow.Entry(L10n.text(this, "Images"),
-                    L10n.text(this, "Badges, game icons and avatars"),
-                    AboutInfo.formatBytes(images), null, false),
+        richRow(
+            new RichRow.Entry(getString(R.string.images), getString(R.string.storage_images_detail),
+                AboutInfo.formatBytes(images), null, false),
             null);
-        richRow(new RichRow.Entry(L10n.text(this, "Game files"),
-                    L10n.text(this, "Temporary copies of games and BIOS files"),
-                    AboutInfo.formatBytes(games), null, false),
+        richRow(new RichRow.Entry(getString(R.string.game_files),
+                    getString(R.string.storage_game_files_detail), AboutInfo.formatBytes(games),
+                    null, false),
             null);
-        richRow(new RichRow.Entry(L10n.text(this, "Downloaded updates"), null,
+        richRow(new RichRow.Entry(getString(R.string.downloaded_updates), null,
                     AboutInfo.formatBytes(updates), null, false),
             null);
         long clearable = images + games + updates;
-        row(L10n.format(this, "Clear cache (%s)", AboutInfo.formatBytes(clearable)), "", () -> {
+        row(getString(R.string.clear_cache_x, AboutInfo.formatBytes(clearable)), "", () -> {
           new Thread(() -> {
             AboutInfo.clearCache(this);
             runOnUiThread(() -> {
-              PocketNotice.show(this, L10n.format(this, "Freed %s",
-                  AboutInfo.formatBytes(clearable)));
-              if (screen == Screen.STORAGE) storage();
+              PocketNotice.show(
+                  this, getString(R.string.freed_x, AboutInfo.formatBytes(clearable)));
+              if (screen == Screen.STORAGE)
+                storage();
             });
           }, "EmuGo-clear-cache").start();
         });
-        message("Saves, states and settings are never removed here.");
+        message(R.string.storage_note);
         restoreSelection(Screen.STORAGE);
       });
     }, "EmuGo-storage").start();
@@ -1441,39 +1504,48 @@ public class MainActivity extends Activity {
   private void credits() {
     screen = Screen.CREDITS;
     body.removeAllViews();
-    title("Credits", "");
-    String[][] credits = {
-        {"RetroAchievements", "Achievements and rcheevos", "https://retroachievements.org"},
-        {"Libretro", "Emulator cores and the Libretro API", "https://www.libretro.com"},
-        {"Nunito", "Font by Vernon Adams, Cyreal and Jacques Le Bailly",
-            "https://fonts.google.com/specimen/Nunito"},
-        {"Tabler Icons", "Icons by Paweł Kuna", "https://tabler.io/icons"}};
-    for (String[] credit : credits)
-      richRow(new RichRow.Entry(credit[0], L10n.text(this, credit[1]), null, null, false),
-          credit[2] == null ? null : () -> openUrl(credit[2]));
+    title(R.string.credits);
+    // Name, website; descriptions are in CREDIT_DETAILS.
+    String[][] credits = {{"RetroAchievements", "https://retroachievements.org"},
+        {"Libretro", "https://www.libretro.com"},
+        {"Nunito", "https://fonts.google.com/specimen/Nunito"},
+        {"Tabler Icons", "https://tabler.io/icons"}};
+    for (int index = 0; index < credits.length; index++) {
+      String[] credit = credits[index];
+      richRow(new RichRow.Entry(credit[0], getString(CREDIT_DETAILS[index]), null, null, false),
+          () -> openUrl(credit[1]));
+    }
   }
-  // File, name, what it is used for, license.
-  private static final String[][] NOTICES = {
-      {"EmuGo-MIT.txt", "EmuGo!", "The launcher itself", "MIT License"},
-      {"rcheevos-MIT.txt", "rcheevos", "RetroAchievements runtime", "MIT License"},
-      {"Libretro-API.txt", "Libretro API", "Interface to the emulator cores", "MIT License"},
-      {"Discord-SDK-third-party.txt", "Discord Social SDK", "Discord Rich Presence",
-          "Notices for its components"},
-      {"Nunito-OFL.txt", "Nunito", "Interface font", "SIL Open Font License 1.1"},
-      {"Tabler-Icons-MIT.txt", "Tabler Icons", "Status and button icons", "MIT License"}};
+  private static final int[] CREDIT_DETAILS = {R.string.credit_retroachievements,
+      R.string.credit_libretro, R.string.credit_nunito, R.string.credit_tabler};
+  // File and name; what each is used for and its license are in NOTICE_DETAILS.
+  private static final String[][] NOTICES = {{"EmuGo-MIT.txt", "EmuGo!"},
+      {"rcheevos-MIT.txt", "rcheevos"}, {"Libretro-API.txt", "Libretro API"},
+      {"Discord-SDK-third-party.txt", "Discord Social SDK"}, {"Nunito-OFL.txt", "Nunito"},
+      {"Tabler-Icons-MIT.txt", "Tabler Icons"}};
+  private static final int[][] NOTICE_DETAILS = {{R.string.notice_emugo, R.string.license_mit},
+      {R.string.notice_rcheevos, R.string.license_mit},
+      {R.string.notice_libretro_api, R.string.license_mit},
+      {R.string.notice_discord, R.string.license_discord_notices},
+      {R.string.notice_nunito, R.string.license_ofl},
+      {R.string.notice_tabler, R.string.license_mit}};
   private void licenses() {
     screen = Screen.LICENSES;
     body.removeAllViews();
-    title("OSS licenses", "");
-    for (String[] notice : NOTICES) {
-      String license = L10n.text(this, notice[3]);
-      richRow(new RichRow.Entry(notice[1], L10n.text(this, notice[2]) + "  ·  " + license, null,
-                  null, false),
+    title(R.string.oss_licenses);
+    for (int index = 0; index < NOTICES.length; index++) {
+      String[] notice = NOTICES[index];
+      String license = getString(NOTICE_DETAILS[index][1]);
+      richRow(new RichRow.Entry(notice[1], getString(NOTICE_DETAILS[index][0]) + "  ·  " + license,
+                  null, null, false),
           () -> LicenseReader.open(this, library, notice[0], notice[1], license));
     }
   }
-  private void toggle(String label, String key, boolean defaultValue) {
-    row(label, library.get(key, defaultValue) ? "On" : "Off", () -> {
+  private String onOff(boolean on) {
+    return getString(on ? R.string.on : R.string.off);
+  }
+  private void toggle(int label, String key, boolean defaultValue) {
+    row(label, onOff(library.get(key, defaultValue)), () -> {
       Screen destination = screen;
       int previousScroll = scroll.getScrollY();
       library.put(key, !library.get(key, defaultValue));
@@ -1482,32 +1554,40 @@ public class MainActivity extends Activity {
       restoreScroll(previousScroll);
     });
   }
-  private void booleanOption(String label, String key, boolean defaultValue) {
-    row(label, library.get(key, defaultValue) ? "On" : "Off", () -> {
+  private void booleanOption(int label, String key, boolean defaultValue) {
+    row(label, onOff(library.get(key, defaultValue)), () -> {
       Screen destination = screen;
       int previousScroll = scroll.getScrollY();
       new PocketDialog.Builder(this)
           .setTitle(label)
-          .setSingleChoiceItems(new String[] {"Off", "On"},
-              library.get(key, defaultValue) ? 1 : 0, (dialog, choice) -> {
-            library.put(key, choice == 1);
-            if (key.equals("controlHints")) drawControlHints();
-            showScreen(destination);
-            restoreSelection(destination, false);
-            restoreScroll(previousScroll);
-          })
+          .setSingleChoiceItems(new String[] {onOff(false), onOff(true)},
+              library.get(key, defaultValue) ? 1 : 0,
+              (dialog, choice) -> {
+                library.put(key, choice == 1);
+                if (key.equals("controlHints"))
+                  drawControlHints();
+                showScreen(destination);
+                restoreSelection(destination, false);
+                restoreScroll(previousScroll);
+              })
           .show();
     });
   }
-  private void choose(String title, String[] options, String key) {
+  private void choose(int title, String[] options, String key) {
     Screen returnTo = screen;
     new PocketDialog.Builder(this)
         .setTitle(title)
-        .setSingleChoiceItems(options, Arrays.asList(options).indexOf(library.get(key, options[0])),
+        .setSingleChoiceItems(L10n.options(this, options),
+            Arrays.asList(options).indexOf(library.get(key, options[0])),
             (d, w) -> {
               library.put(key, options[w]);
-              if (key.equals("language")) L10n.setLanguage(options[w]);
               d.dismiss();
+              if (key.equals("language") && L10n.remember(this, options[w])) {
+                // New resources need a new activity; come back to the same settings page.
+                languageReturn = returnTo;
+                recreate();
+                return;
+              }
               render();
               showScreen(returnTo);
               updateSecond();
@@ -1515,24 +1595,25 @@ public class MainActivity extends Activity {
         .show();
   }
   private void connectivityToggles() {
-    String wifi = "Off";
+    int wifi = R.string.off;
     try {
       android.net.wifi.WifiManager manager =
           (android.net.wifi.WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
       if (manager != null && manager.isWifiEnabled()) {
-        wifi = "Not connected";
+        wifi = R.string.not_connected;
         ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
         NetworkCapabilities cap = cm.getNetworkCapabilities(cm.getActiveNetwork());
         if (cap != null && cap.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
           int strength = cap.getSignalStrength();
           wifi = strength == NetworkCapabilities.SIGNAL_STRENGTH_UNSPECIFIED || strength >= -60
-              ? "Connected · strong signal"
-              : strength >= -75 ? "Connected · good signal" : "Connected · weak signal";
+              ? R.string.connected_strong_signal
+              : strength >= -75 ? R.string.connected_good_signal
+                                : R.string.connected_weak_signal;
         }
       }
     } catch (Exception ignored) {
     }
-    row(L10n.text(this, "Wi-Fi") + ": " + L10n.text(this, wifi), "",
+    row(getString(R.string.wi_fi) + ": " + getString(wifi), "",
         () -> startActivity(new Intent(Settings.Panel.ACTION_WIFI)));
     boolean bluetooth = false;
     try {
@@ -1542,8 +1623,10 @@ public class MainActivity extends Activity {
     }
     boolean bluetoothOn = bluetooth;
     boolean permitted = BluetoothDevices.permitted(this);
-    LinearLayout bluetoothRow = row(L10n.text(this, "Bluetooth") + ": "
-            + L10n.text(this, !bluetoothOn ? "Off" : permitted ? "On" : "On · select to show devices"),
+    LinearLayout bluetoothRow = row(getString(R.string.bluetooth) + ": "
+            + getString(!bluetoothOn ? R.string.off
+                    : permitted      ? R.string.on
+                                     : R.string.on_select_to_show_devices),
         "", () -> {
           if (bluetoothOn && !BluetoothDevices.permitted(this))
             requestPermissions(
@@ -1556,15 +1639,16 @@ public class MainActivity extends Activity {
       int generation = menuGeneration;
       BluetoothDevices.query(this, devices -> {
         if (menuGeneration != generation) return;
-        bluetoothText.setText(L10n.text(this, "Bluetooth") + ": " + (devices.isEmpty()
-            ? L10n.text(this, "No devices connected") : String.join(", ", devices)));
+        bluetoothText.setText(getString(R.string.bluetooth) + ": "
+            + (devices.isEmpty() ? getString(R.string.no_devices_connected)
+                                 : String.join(", ", devices)));
       });
     }
     adjustRow(this::volumeLabel, this::stepVolume);
     adjustRow(this::brightnessLabel, this::stepBrightness);
     nowPlaying();
     space(14);
-    TextView label = text("Notifications", 14, true);
+    TextView label = text(R.string.notifications, 14, true);
     label.setTextColor(muted);
     label.setPadding(dp(14), 0, dp(14), dp(5));
     body.addView(label);
@@ -1605,7 +1689,7 @@ public class MainActivity extends Activity {
     android.media.AudioManager audio = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
     int max = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
     int value = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
-    return L10n.text(this, "Volume") + ": " + Math.round(value * 100f / Math.max(1, max)) + "%";
+    return getString(R.string.volume) + ": " + Math.round(value * 100f / Math.max(1, max)) + "%";
   }
   private void stepVolume(int direction) {
     try {
@@ -1615,11 +1699,11 @@ public class MainActivity extends Activity {
           direction > 0 ? android.media.AudioManager.ADJUST_RAISE
                         : android.media.AudioManager.ADJUST_LOWER, 0);
     } catch (SecurityException e) {
-      PocketNotice.show(this, "Volume is locked by Do Not Disturb");
+      PocketNotice.show(this, R.string.volume_locked);
     }
   }
   private String brightnessLabel() {
-    return L10n.text(this, "Brightness") + ": " + L10n.text(this, Brightness.label(this));
+    return getString(R.string.brightness) + ": " + Brightness.label(this);
   }
   private void stepBrightness(int direction) {
     Brightness.step(this, direction);
@@ -1654,11 +1738,11 @@ public class MainActivity extends Activity {
   private void infocenter() {
     screen = Screen.INFOCENTER;
     body.removeAllViews();
-    title("Infocenter", "");
+    title(R.string.infocenter);
     connectivityToggles();
     android.service.notification.StatusBarNotification[] notices = NotificationService.current();
     if (notices == null) {
-      row("Enable notification access", "Allow EmuGo!OS in Android settings",
+      row(R.string.enable_notification_access, R.string.allow_emugo_os_in_android_settings,
           () -> startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
       return;
     }
@@ -1667,7 +1751,7 @@ public class MainActivity extends Activity {
       if (!NotificationService.SYNCTHING_PACKAGE.equals(item.getPackageName()))
         visible.add(item);
     if (visible.isEmpty()) {
-      TextView empty = text("All clear", 17, false);
+      TextView empty = text(R.string.all_clear, 17, false);
       empty.setPadding(dp(14), dp(6), dp(14), dp(6));
       body.addView(empty);
       return;
@@ -1678,7 +1762,7 @@ public class MainActivity extends Activity {
     for (android.service.notification.StatusBarNotification item : visible)
       anyClearable |= item.isClearable();
     if (anyClearable)
-      row("Clear all", "", () -> {
+      row(R.string.clear_all, "", () -> {
         NotificationService.dismissAll();
         focusedPositions.remove(Screen.INFOCENTER);
         refreshInfocenterSoon();
@@ -1701,7 +1785,7 @@ public class MainActivity extends Activity {
               false), () -> {
         PendingIntent open = notification.contentIntent;
         if (open == null) {
-          PocketNotice.show(this, "This notification has no open action");
+          PocketNotice.show(this, R.string.notification_no_open_action);
           return;
         }
         try {
@@ -1710,7 +1794,7 @@ public class MainActivity extends Activity {
             NotificationService.dismiss(item.getKey());
           toggleInfocenter();
         } catch (PendingIntent.CanceledException e) {
-          PocketNotice.show(this, "This notification can no longer be opened");
+          PocketNotice.show(this, R.string.notification_no_longer_opens);
         }
       });
       if (item.isClearable()) infocenterKeys.put(notificationRow, item.getKey());
@@ -1760,7 +1844,7 @@ public class MainActivity extends Activity {
   private void apps() {
     screen = Screen.APPS;
     body.removeAllViews();
-    title("Android", "Installed apps");
+    title(R.string.android);
     Intent query = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
     List<ResolveInfo> entries = getPackageManager().queryIntentActivities(query, 0);
     entries.sort(Comparator.comparing(
@@ -1809,18 +1893,17 @@ public class MainActivity extends Activity {
     if (isFinishing())
       return;
     new PocketDialog.Builder(this)
-        .setTitle("Welcome to EmuGo!")
-        .setMessage("Choose a ROMs folder. Your settings and saves will live in its emugo folder. "
-            + "Which button layout do you use?")
+        .setTitle(R.string.welcome_to_emugo)
+        .setMessage(R.string.welcome_message)
         .setItems(new String[] {"Nintendo", "Xbox", "PlayStation"},
             (d, w) -> {
               library.put("layout", new String[] {"Nintendo", "Xbox", "PlayStation"}[w]);
               drawControlHints();
               library.local.edit().putBoolean("onboarded", true).apply();
               new PocketDialog.Builder(this)
-                  .setMessage("Would you like EmuGo! as your default launcher?")
-                  .setPositiveButton("Set launcher", (a, b) -> requestHome())
-                  .setNegativeButton("Later", null)
+                  .setMessage(R.string.default_launcher_question)
+                  .setPositiveButton(R.string.set_launcher, (a, b) -> requestHome())
+                  .setNegativeButton(R.string.later, null)
                   .show();
             })
         .show();
@@ -1830,7 +1913,7 @@ public class MainActivity extends Activity {
       RoleManager rm = getSystemService(RoleManager.class);
       if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_HOME)) {
         if (rm.isRoleHeld(RoleManager.ROLE_HOME)) {
-          PocketNotice.show(this, "EmuGo! is already your default launcher");
+          PocketNotice.show(this, R.string.emugo_is_already_your_default_launcher);
         } else {
           startActivityForResult(
               rm.createRequestRoleIntent(RoleManager.ROLE_HOME), REQUEST_HOME_ROLE);
@@ -1858,12 +1941,13 @@ public class MainActivity extends Activity {
     i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
         | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
     startActivityForResult(i, PICK_RETROARCH_SAVES);
-    PocketNotice.show(this, "Select your RetroArch folder");
+    PocketNotice.show(this, R.string.select_your_retroarch_folder);
   }
   private void importSavesFrom(Uri source, boolean notify) {
     try {
       Uri emugo = library.ensureEmugo();
-      if (emugo == null) throw new IOException("Choose a ROMs folder first");
+      if (emugo == null)
+        throw new IOException(getString(R.string.choose_a_roms_folder_first));
       Uri target = library.findChild(emugo, "saves");
       if (target == null)
         target = android.provider.DocumentsContract.createDocument(getContentResolver(), emugo,
@@ -1910,12 +1994,13 @@ public class MainActivity extends Activity {
       }
       int total = count;
       if (notify)
-        runOnUiThread(() -> PocketNotice.show(this,
-            L10n.format(this, "Imported %d save files", total)));
+        runOnUiThread(
+            () -> PocketNotice.show(this, getString(R.string.imported_n_save_files, total)));
     } catch (Exception e) {
       if (notify)
-        runOnUiThread(() -> PocketNotice.show(this,
-            L10n.format(this, "Save import failed: %s", e.getMessage())));
+        runOnUiThread(()
+                          -> PocketNotice.show(
+                              this, getString(R.string.save_import_failed_x, e.getMessage())));
     }
   }
   private boolean isRetroArchSaveFolder(String name) {
@@ -1996,7 +2081,8 @@ public class MainActivity extends Activity {
       if (firstHeld && secondHeld && !comboTriggered) {
         comboTriggered = true;
         new PocketDialog.Builder(this)
-            .setItems(new String[] {"Library", "Settings", "Android", "Infocenter"},
+            .setItems(new String[] {getString(R.string.library), getString(R.string.settings),
+                          getString(R.string.android), getString(R.string.infocenter)},
                 (d, w) -> {
                   if (w == 0)
                     home();
@@ -2199,8 +2285,8 @@ public class MainActivity extends Activity {
     list.setOrientation(1);
     scroll.addView(list);
     for (Library.SystemInfo s : library.visibleSystems()) {
-      TextView item = text(s.name + "  ·  "
-          + L10n.format(this, "%d games", library.games(s).size()), 22, false);
+      TextView item =
+          text(s.name + "  ·  " + getString(R.string.n_games, library.games(s).size()), 22, false);
       item.setPadding(0, dp(10), 0, dp(10));
       list.addView(item);
       item.setOnClickListener(v -> {
@@ -2218,7 +2304,7 @@ public class MainActivity extends Activity {
       second.show();
     } catch (android.view.WindowManager.InvalidDisplayException e) {
       second = null;
-      PocketNotice.show(this, "Second screen unavailable");
+      PocketNotice.show(this, R.string.second_screen_unavailable);
     }
   }
 }

@@ -168,8 +168,9 @@ final class LicenseReader {
     String page = layout.equals("PlayStation") ? "L2/R2"
         : layout.equals("Nintendo") ? "ZL/ZR" : "LT/RT";
     String back = layout.equals("PlayStation") ? "○" : "B";
-    return L10n.text(activity, "D-pad") + "  " + L10n.text(activity, "Scroll") + "     " + page
-        + "  " + L10n.text(activity, "Page") + "     " + back + "  " + L10n.text(activity, "Close");
+    return activity.getString(R.string.d_pad) + "  " + activity.getString(R.string.scroll) + "     "
+        + page + "  " + activity.getString(R.string.page) + "     " + back + "  "
+        + activity.getString(R.string.close);
   }
 
   /**

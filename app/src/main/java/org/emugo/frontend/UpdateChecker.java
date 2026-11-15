@@ -61,7 +61,8 @@ final class UpdateChecker {
       if (fallback != null) return fallback;
       throw new RateLimitException(context, connection.getHeaderField("X-RateLimit-Reset"));
     }
-    if (status != 200) throw new IOException(L10n.format(context, "GitHub API returned %d", status));
+    if (status != 200)
+      throw new IOException(context.getString(R.string.github_api_returned_n, status));
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     try (InputStream in = connection.getInputStream()) {
       byte[] b = new byte[8192];
@@ -131,7 +132,7 @@ final class UpdateChecker {
       Release previous = cached == null ? null : parse(cached);
       release.notes = previous != null && release.version.equals(previous.version)
           ? previous.notes
-          : L10n.format(context, "The changelog is on the release page: %s", location);
+          : context.getString(R.string.the_changelog_is_on_the_release_page_x, location);
       return release;
     } catch (Exception e) {
       return null;
@@ -151,8 +152,7 @@ final class UpdateChecker {
         minutes = Math.max(1, (seconds + 59) / 60);
       } catch (Exception ignored) {
       }
-      return L10n.format(context,
-          "GitHub is limiting update checks right now. Try again in %d minutes.", minutes);
+      return context.getString(R.string.update_rate_limited, minutes);
     }
   }
 
@@ -175,20 +175,20 @@ final class UpdateChecker {
         }
         Release release = fetch(activity);
         if (release == null) {
-          message(activity, "No published release yet");
+          message(activity, activity.getString(R.string.no_published_release_yet));
         } else if (newer(activity, release)) {
           NotificationManager manager = activity.getSystemService(NotificationManager.class);
           if (manager != null) manager.cancel(NOTIFICATION_ID);
           activity.runOnUiThread(() -> offer(activity, release));
         } else {
-          message(activity, L10n.format(activity, "EmuGo! is up to date (%s)",
-              Version.name(activity)));
+          message(
+              activity, activity.getString(R.string.emugo_is_up_to_date_x, Version.name(activity)));
         }
       } catch (RateLimitException e) {
         if (manual) message(activity, e.getMessage());
       } catch (Exception e) {
         if (manual)
-          message(activity, L10n.format(activity, "Could not check updates: %s", e.getMessage()));
+          message(activity, activity.getString(R.string.could_not_check_updates_x, e.getMessage()));
       } finally {
         busy = false;
       }
@@ -198,20 +198,24 @@ final class UpdateChecker {
   /** The changelog with a download button. */
   static void offer(Activity activity, Release release) {
     if (activity.isFinishing()) return;
-    PocketDialog.Builder dialog = new PocketDialog.Builder(activity)
-        .setTitle(L10n.format(activity, "EmuGo! %s is available", release.version))
-        .setMessage(changelog(activity, release.notes));
+    PocketDialog.Builder dialog =
+        new PocketDialog.Builder(activity)
+            .setTitle(activity.getString(R.string.emugo_x_is_available, release.version))
+            .setMessage(changelog(activity, release.notes));
     if (release.apkUrl != null && !release.apkUrl.isEmpty())
-      dialog.setPositiveButton("Download and install", (d, w) -> download(activity, release));
+      dialog.setPositiveButton(
+          R.string.download_and_install, (d, w) -> download(activity, release));
     else
-      dialog.setPositiveButton("Open release",
-          (d, w) -> activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(release.page))));
-    dialog.setNegativeButton("Later", null).show();
+      dialog.setPositiveButton(R.string.open_release,
+          (d, w)
+              -> activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(release.page))));
+    dialog.setNegativeButton(R.string.later, null).show();
   }
 
   /** GitHub release notes are Markdown; show them as plain text with bullets. */
   static String changelog(Context context, String notes) {
-    if (notes == null || notes.trim().isEmpty()) return L10n.text(context, "No changelog provided");
+    if (notes == null || notes.trim().isEmpty())
+      return context.getString(R.string.no_changelog_provided);
     StringBuilder out = new StringBuilder();
     for (String line : notes.replace("\r", "").split("\n")) {
       String text = line.trim();
@@ -227,11 +231,11 @@ final class UpdateChecker {
 
   private static void download(Activity activity, Release release) {
     TextView progress = new TextView(activity);
-    progress.setText(L10n.text(activity, "Starting download…"));
+    progress.setText(activity.getString(R.string.starting_download));
     Dialog dialog = new PocketDialog.Builder(activity)
-        .setTitle(L10n.format(activity, "Downloading EmuGo! %s", release.version))
-        .setView(progress)
-        .show();
+                        .setTitle(activity.getString(R.string.downloading_emugo_x, release.version))
+                        .setView(progress)
+                        .show();
     dialog.setCancelable(false);
     new Thread(() -> {
       File dir = new File(activity.getCacheDir(), "updates");
@@ -269,7 +273,7 @@ final class UpdateChecker {
         apk.delete();
         activity.runOnUiThread(() -> {
           dialog.dismiss();
-          message(activity, L10n.format(activity, "Download failed: %s", e.getMessage()));
+          message(activity, activity.getString(R.string.download_failed_x, e.getMessage()));
         });
       }
     }, "EmuGo-update-download").start();
@@ -290,13 +294,13 @@ final class UpdateChecker {
     if (!activity.getPackageManager().canRequestPackageInstalls()) {
       pendingApk = apk;
       new PocketDialog.Builder(activity)
-          .setTitle("Allow updates")
-          .setMessage("Android needs your permission before EmuGo! can install its own updates. "
-              + "Turn on \"Allow from this source\" and come back.")
-          .setPositiveButton("Open settings", (d, w) -> activity.startActivity(
-              new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                  Uri.parse("package:" + activity.getPackageName()))))
-          .setNegativeButton("Cancel", null)
+          .setTitle(R.string.allow_updates)
+          .setMessage(R.string.allow_updates_message)
+          .setPositiveButton(R.string.open_settings,
+              (d, w)
+                  -> activity.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                      Uri.parse("package:" + activity.getPackageName()))))
+          .setNegativeButton(R.string.cancel, null)
           .show();
       return;
     }
@@ -321,7 +325,7 @@ final class UpdateChecker {
         session.commit(callback.getIntentSender());
       }
     } catch (Exception e) {
-      message(activity, L10n.format(activity, "Install failed: %s", e.getMessage()));
+      message(activity, activity.getString(R.string.install_failed_x, e.getMessage()));
     }
   }
 
@@ -371,26 +375,29 @@ final class UpdateChecker {
     }, "EmuGo-update-remind").start();
   }
 
-  private static void post(Context context, Release release) {
-    NotificationManager manager = context.getSystemService(NotificationManager.class);
+  private static void post(Context base, Release release) {
+    NotificationManager manager = base.getSystemService(NotificationManager.class);
     if (manager == null) return;
-    L10n.setLanguage(new Library(context).get("language", "System"));
+    // Runs from the background job too, so apply the in-app language here.
+    L10n.remember(base, new Library(base).get("language", "System"));
+    Context context = L10n.wrap(base);
     manager.createNotificationChannel(new NotificationChannel(
-        CHANNEL, L10n.text(context, "Updates"), NotificationManager.IMPORTANCE_DEFAULT));
+        CHANNEL, context.getString(R.string.updates), NotificationManager.IMPORTANCE_DEFAULT));
     Intent open = new Intent(context, MainActivity.class)
                       .putExtra(EXTRA_SHOW_UPDATE, true)
                       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
     PendingIntent tap = PendingIntent.getActivity(context, 0, open,
         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-    Notification notification = new Notification.Builder(context, CHANNEL)
-        .setSmallIcon(context.getResources().getIdentifier(
-            "ic_emugo_mark", "drawable", context.getPackageName()))
-        .setContentTitle(L10n.format(context, "EmuGo! %s is available", release.version))
-        .setContentText(L10n.text(context, "Tap to see what's new and install it"))
-        .setStyle(new Notification.BigTextStyle().bigText(changelog(context, release.notes)))
-        .setContentIntent(tap)
-        .setAutoCancel(true)
-        .build();
+    Notification notification =
+        new Notification.Builder(context, CHANNEL)
+            .setSmallIcon(context.getResources().getIdentifier(
+                "ic_emugo_mark", "drawable", context.getPackageName()))
+            .setContentTitle(context.getString(R.string.emugo_x_is_available, release.version))
+            .setContentText(context.getString(R.string.update_notification_text))
+            .setStyle(new Notification.BigTextStyle().bigText(changelog(context, release.notes)))
+            .setContentIntent(tap)
+            .setAutoCancel(true)
+            .build();
     try {
       manager.notify(NOTIFICATION_ID, notification);
     } catch (SecurityException ignored) {
@@ -420,8 +427,8 @@ final class UpdateChecker {
   static void message(Activity activity, String value) {
     activity.runOnUiThread(()
                                -> new PocketDialog.Builder(activity)
-                                   .setMessage(value)
-                                   .setPositiveButton("OK", null)
-                                   .show());
+                                      .setMessage(value)
+                                      .setPositiveButton(R.string.ok, null)
+                                      .show());
   }
 }

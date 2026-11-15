@@ -46,17 +46,26 @@ final class RaBridge {
   static native String[] nativeAchievements();
   static native String nativeSummary();
 
-  static String bucketLabel(int type) {
+  static int bucketLabel(int type) {
     switch (type) {
-      case 1: return "Locked";
-      case 2: return "Unlocked";
-      case 3: return "Unsupported";
-      case 4: return "Unofficial";
-      case 5: return "Recently unlocked";
-      case 6: return "Active challenges";
-      case 7: return "Almost there";
-      case 8: return "Waiting to sync";
-      default: return "Achievements";
+      case 1:
+        return R.string.locked;
+      case 2:
+        return R.string.unlocked;
+      case 3:
+        return R.string.unsupported;
+      case 4:
+        return R.string.unofficial;
+      case 5:
+        return R.string.recently_unlocked;
+      case 6:
+        return R.string.active_challenges;
+      case 7:
+        return R.string.almost_there;
+      case 8:
+        return R.string.waiting_to_sync;
+      default:
+        return R.string.achievements;
     }
   }
 

@@ -61,7 +61,7 @@ final class AboutInfo {
     c.setRequestProperty("User-Agent", "EmuGo-Android/" + Version.name(context));
     int status = c.getResponseCode();
     if (status == 404)
-      return L10n.text(context, "No release notes for this version");
+      return context.getString(R.string.no_release_notes_for_this_version);
     if (status == 403 || status == 429) {
       // Rate limited: the updater's last answer covers the latest release.
       UpdateChecker.Release cached = UpdateChecker.cachedRelease(context);

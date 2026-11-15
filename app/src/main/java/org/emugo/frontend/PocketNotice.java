@@ -16,6 +16,10 @@ final class PocketNotice {
 
   private PocketNotice() {}
 
+  static void show(Activity activity, int message) {
+    show(activity, activity.getString(message));
+  }
+
   static void show(Activity activity, String message) {
     FrameLayout decor = (FrameLayout) activity.getWindow().getDecorView();
     for (int index = decor.getChildCount() - 1; index >= 0; index--) {
@@ -26,7 +30,7 @@ final class PocketNotice {
     ThemePalette colors = ThemePalette.resolve(activity, new Library(activity));
     TextView notice = new TextView(activity);
     notice.setTag(TAG);
-    notice.setText(L10n.text(activity, message));
+    notice.setText(message);
     notice.setTextColor(colors.background);
     notice.setTextSize(14);
     try {

@@ -16,20 +16,19 @@ final class RetroAchievements {
     box.setPadding(32, 8, 32, 0);
     EditText user = new EditText(activity);
     user.setSingleLine(true);
-    user.setHint(L10n.text(activity, "Username"));
+    user.setHint(activity.getString(R.string.username));
     user.setText(library.get("raUser", ""));
     box.addView(user);
     EditText password = new EditText(activity);
     password.setSingleLine(true);
-    password.setHint(L10n.text(activity, "Password"));
+    password.setHint(activity.getString(R.string.password));
     password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
     box.addView(password);
     new PocketDialog.Builder(activity)
         .setTitle("RetroAchievements")
         .setView(box)
-        .setMessage("Sign in once to obtain an emulator token. The password is discarded; the "
-            + "token is saved in ROMs/emugo/settings.json for sync.")
-        .setPositiveButton("Sign in",
+        .setMessage(R.string.ra_sign_in_explanation)
+        .setPositiveButton(R.string.sign_in,
             (d, w) -> {
               String username = user.getText().toString().trim(),
                      secret = password.getText().toString();
@@ -62,26 +61,28 @@ final class RetroAchievements {
                   }
                   JSONObject response = new JSONObject(out.toString("UTF-8"));
                   if (!response.optBoolean("Success", false))
-                    throw new IOException(response.optString("Error", "Sign-in failed"));
+                    throw new IOException(
+                        response.optString("Error", activity.getString(R.string.sign_in_failed)));
                   String token = response.getString("Token");
                   String canonical = response.optString("User", username);
                   activity.runOnUiThread(() -> {
                     library.put("raUser", canonical);
                     library.put("raToken", token);
-                    PocketNotice.show(activity, L10n.format(activity, "Signed in as %s", canonical));
+                    PocketNotice.show(
+                        activity, activity.getString(R.string.signed_in_as_x, canonical));
                     done.run();
                   });
                 } catch (Exception e) {
                   activity.runOnUiThread(()
                                              -> new PocketDialog.Builder(activity)
-                                                 .setTitle("RetroAchievements sign-in failed")
-                                                 .setMessage(e.getMessage())
-                                                 .setPositiveButton("OK", null)
-                                                 .show());
+                                                    .setTitle(R.string.ra_sign_in_failed)
+                                                    .setMessage(e.getMessage())
+                                                    .setPositiveButton(R.string.ok, null)
+                                                    .show());
                 }
               }, "EmuGo-RA-login").start();
             })
-        .setNegativeButton("Cancel", null)
+        .setNegativeButton(R.string.cancel, null)
         .show();
   }
 }

@@ -53,9 +53,13 @@ final class RichRow {
   }
 
   /** A section label; not focusable. */
+  static View header(Context context, ThemePalette colors, Typeface bold, int text) {
+    return header(context, colors, bold, context.getString(text));
+  }
+
   static View header(Context context, ThemePalette colors, Typeface bold, String text) {
     TextView label = new TextView(context);
-    label.setText(L10n.text(context, text));
+    label.setText(text);
     label.setTextSize(14);
     label.setTypeface(bold);
     label.setTextColor(colors.muted);

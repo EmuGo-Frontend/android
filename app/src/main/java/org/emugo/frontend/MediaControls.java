@@ -39,7 +39,7 @@ final class MediaControls {
     MediaMetadata data = controller.getMetadata();
     String title = data == null ? null : data.getString(MediaMetadata.METADATA_KEY_TITLE);
     String artist = data == null ? null : data.getString(MediaMetadata.METADATA_KEY_ARTIST);
-    String text = title == null ? L10n.text(context, "Unknown track") : title;
+    String text = title == null ? context.getString(R.string.unknown_track) : title;
     if (artist != null && !artist.isEmpty()) text += " – " + artist;
     return (playing(controller) ? "⏸ " : "▶ ") + text;
   }

@@ -11,7 +11,8 @@ import android.view.WindowManager;
  * Stored per device, not synced.
  */
 final class Brightness {
-  static final String[] LABELS = {"System", "Low", "Mid", "High", "Max"};
+  private static final int[] LABELS = {
+      R.string.system, R.string.low, R.string.mid, R.string.high, R.string.max};
   private static final float[] VALUES = {
       WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE, 0.06f, 0.2f, 0.45f, 0.8f};
 
@@ -24,7 +25,7 @@ final class Brightness {
   }
 
   static String label(Context context) {
-    return LABELS[level(context)];
+    return context.getString(LABELS[level(context)]);
   }
 
   static void step(Context context, int direction) {

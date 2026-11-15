@@ -111,14 +111,10 @@ http://127.0.0.1:53134/callback
 
 ## Building
 
-You need the Android SDK (API 36), NDK 30 and Java 17.
+You need the Android SDK and Java 17 or newer. On the first build Gradle installs the matching SDK platform, NDK and CMake by itself.
 
 ```sh
-# With Gradle
-gradle :app:assembleDebug
-
-# Without Gradle, using the installed build tools
-ANDROID_HOME=~/Android/Sdk JAVA_HOME=/path/to/jdk-17 scripts/build-debug-offline.sh
+./gradlew :app:assembleDebug
 ```
 
 Discord support needs the Discord Social SDK, which is not part of this repository. Unpack it once with `sh scripts/prepare-discord-sdk.sh /path/to/DiscordSocialSdk.zip`. Builds without it work, just without Discord.
@@ -128,10 +124,12 @@ Release builds are signed with credentials from the environment, never from file
 ```sh
 SIGNING_KEYSTORE=/path/to/keystore.jks \
 SIGNING_STORE_PASSWORD=... \
-scripts/build-release-offline.sh
+./gradlew :app:assembleRelease
 ```
 
-`SIGNING_KEY_ALIAS` defaults to `upload`, and `SIGNING_KEY_PASSWORD` to the store password.
+`SIGNING_KEY_ALIAS` defaults to `upload`, and `SIGNING_KEY_PASSWORD` to the store password. The signed APK is written to `app/build/outputs/apk/release/app-release.apk`.
+
+Interface text lives in `app/src/main/res/values/strings.xml`, with the German translation in `values-de/strings.xml`.
 
 ## Syncing
 

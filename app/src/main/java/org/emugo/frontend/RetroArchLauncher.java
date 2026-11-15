@@ -34,8 +34,8 @@ final class RetroArchLauncher {
     if (retroArch == null) {
       new PocketDialog.Builder(activity)
           .setTitle("RetroArch")
-          .setMessage("Install RetroArch to use this option.")
-          .setPositiveButton("Close", null)
+          .setMessage(R.string.install_retroarch_to_use_this_option)
+          .setPositiveButton(R.string.close, null)
           .show();
       return;
     }
@@ -53,13 +53,15 @@ final class RetroArchLauncher {
           startGame(activity, installed, game);
         } else {
           new PocketDialog.Builder(activity)
-              .setTitle("RetroArch core missing")
-              .setMessage(L10n.format(activity, "Install %s in RetroArch first.", coreName))
-              .setPositiveButton("Open RetroArch", (dialog, which) -> {
-                Intent open = manager.getLaunchIntentForPackage(installed.packageName);
-                if (open != null) activity.startActivity(open);
-              })
-              .setNegativeButton("Close", null)
+              .setTitle(R.string.retroarch_core_missing)
+              .setMessage(activity.getString(R.string.install_x_in_retroarch_first, coreName))
+              .setPositiveButton(R.string.open_retroarch,
+                  (dialog, which) -> {
+                    Intent open = manager.getLaunchIntentForPackage(installed.packageName);
+                    if (open != null)
+                      activity.startActivity(open);
+                  })
+              .setNegativeButton(R.string.close, null)
               .show();
         }
       }
@@ -92,8 +94,8 @@ final class RetroArchLauncher {
     try {
       activity.startActivity(intent);
     } catch (Exception error) {
-      PocketNotice.show(activity, L10n.format(activity,
-          "RetroArch could not open this game: %s", error.getMessage()));
+      PocketNotice.show(activity,
+          activity.getString(R.string.retroarch_could_not_open_this_game_x, error.getMessage()));
     }
   }
 

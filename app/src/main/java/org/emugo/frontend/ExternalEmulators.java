@@ -62,8 +62,8 @@ final class ExternalEmulators {
     }
     if (pkg == null) {
       new PocketDialog.Builder(activity)
-          .setMessage(L10n.format(activity, "No compatible %s app was found.", key))
-          .setPositiveButton("OK", null)
+          .setMessage(activity.getString(R.string.no_compatible_x_app_was_found, key))
+          .setPositiveButton(R.string.ok, null)
           .show();
       return;
     }
@@ -87,11 +87,11 @@ final class ExternalEmulators {
       Intent fallback = pm.getLaunchIntentForPackage(pkg);
       if (fallback != null) {
         activity.startActivity(fallback);
-        PocketNotice.show(activity,
-            L10n.format(activity, "Open the game inside %s. This build does not accept game intents.", key));
+        PocketNotice.show(
+            activity, activity.getString(R.string.emulator_rejects_game_intents, key));
       } else
-        PocketNotice.show(activity, L10n.format(activity, "Could not launch %s: %s", key,
-            e.getMessage()));
+        PocketNotice.show(
+            activity, activity.getString(R.string.could_not_launch_x_x, key, e.getMessage()));
     }
   }
   private static String mime(Uri u) {

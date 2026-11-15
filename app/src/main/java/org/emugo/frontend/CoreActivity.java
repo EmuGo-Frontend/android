@@ -72,12 +72,15 @@ public final class CoreActivity extends Activity {
     from.startActivity(i);
   }
   @Override
+  protected void attachBaseContext(android.content.Context base) {
+    super.attachBaseContext(L10n.wrap(base));
+  }
+  @Override
   public void onCreate(Bundle state) {
     super.onCreate(state);
     getWindow().getDecorView().setSystemUiVisibility(5894 | 1024 | 512);
     library = new Library(this);
     Brightness.apply(this, getWindow());
-    L10n.setLanguage(library.get("language", "System"));
     autoStates = library.get("autoStates", false);
     gameTitle = getIntent().getStringExtra("title");
     fileTitle = getIntent().getStringExtra("fileTitle");
@@ -96,7 +99,7 @@ public final class CoreActivity extends Activity {
     frame = new FrameView();
     setContentView(frame);
     TextView loading = new TextView(this);
-    loading.setText(L10n.format(this, "Preparing %s…", gameTitle));
+    loading.setText(getString(R.string.preparing_x, gameTitle));
     loading.setTextColor(-1);
     loading.setGravity(Gravity.CENTER);
     addContentView(loading, new ViewGroup.LayoutParams(-1, -1));
@@ -108,7 +111,7 @@ public final class CoreActivity extends Activity {
       String coreName = getIntent().getStringExtra("core");
       String raw = getIntent().getStringExtra("uri");
       if (coreName == null || raw == null)
-        throw new IOException("Missing game");
+        throw new IOException(getString(R.string.missing_game));
       work = new File(getFilesDir(), "run/" + fileTitle.replaceAll("[^a-zA-Z0-9._-]", "_"));
       work.mkdirs();
       if (!autoStates) new File(work, "state.sav").delete();
@@ -119,7 +122,7 @@ public final class CoreActivity extends Activity {
       if (!"psx".equals(system)) try (InputStream in = getContentResolver().openInputStream(Uri.parse(raw));
           OutputStream out = new FileOutputStream(rom)) {
         if (in == null)
-          throw new IOException("Could not open ROM");
+          throw new IOException(getString(R.string.could_not_open_rom));
         copy(in, out);
       }
       if (rom.getName().toLowerCase().endsWith(".zip")) {
@@ -139,7 +142,7 @@ public final class CoreActivity extends Activity {
             break;
           }
           if (extracted == null)
-            throw new IOException("Archive has no game file");
+            throw new IOException(getString(R.string.archive_has_no_game_file));
           rom = extracted;
         }
       }
@@ -167,10 +170,10 @@ public final class CoreActivity extends Activity {
       String message = e.getMessage();
       main.post(()
                     -> new PocketDialog.Builder(this)
-                        .setTitle("Could not start game")
-                        .setMessage(message)
-                        .setPositiveButton("OK", (d, w) -> finish())
-                        .show());
+                           .setTitle(R.string.could_not_start_game)
+                           .setMessage(message)
+                           .setPositiveButton(R.string.ok, (d, w) -> finish())
+                           .show());
     }
   }
   /**
@@ -227,7 +230,8 @@ public final class CoreActivity extends Activity {
     }
     ByteArrayOutputStream cue = new ByteArrayOutputStream();
     try (InputStream in = getContentResolver().openInputStream(uri)) {
-      if (in == null) throw new IOException("Could not open ROM");
+      if (in == null)
+        throw new IOException(getString(R.string.could_not_open_rom));
       copy(in, cue);
     }
     try (OutputStream out = new FileOutputStream(target)) {
@@ -246,14 +250,16 @@ public final class CoreActivity extends Activity {
       Library.Item match = null;
       for (Library.Item item : siblings)
         if (item.name.equalsIgnoreCase(track)) match = item;
-      if (match == null) throw new IOException(L10n.format(this, "Missing disc file: %s", track));
+      if (match == null)
+        throw new IOException(getString(R.string.missing_disc_file_x, track));
       link(new File(disc, track), match.uri);
     }
     return target;
   }
   private void link(File target, Uri uri) throws IOException {
     try (ParcelFileDescriptor descriptor = getContentResolver().openFileDescriptor(uri, "r")) {
-      if (descriptor == null) throw new IOException("Could not open ROM");
+      if (descriptor == null)
+        throw new IOException(getString(R.string.could_not_open_rom));
       target.delete();
       nativeMapFile(target.getPath(), descriptor.getFd()); // the host keeps its own duplicate
     }
@@ -302,7 +308,7 @@ public final class CoreActivity extends Activity {
         }
       }
       if (last != null)
-        throw new IOException(L10n.format(this, "Core download failed: %s", last.getMessage()));
+        throw new IOException(getString(R.string.core_download_failed_x, last.getMessage()));
       try {
         if (coreDir != null) {
           Uri target = library.findChild(coreDir, zipName);
@@ -330,7 +336,7 @@ public final class CoreActivity extends Activity {
         }
       }
     }
-    throw new IOException("No core library in archive");
+    throw new IOException(getString(R.string.no_core_library_in_archive));
   }
   private static void copy(InputStream in, OutputStream out) throws IOException {
     byte[] b = new byte[65536];
@@ -482,32 +488,34 @@ public final class CoreActivity extends Activity {
   }
   private void showGameMenu() {
     pauseBack = () -> closePauseMenu(true);
-    String[] items = raActive
-        ? new String[] {"Resume game", "Take screenshot", "Achievements", "Emulation",
-            "Return to library"}
-        : new String[] {"Resume game", "Take screenshot", "Emulation", "Return to library"};
-    pauseMenu.replacePage(gameTitle, items, -1, (d, choice) -> {
-      switch (items[choice]) {
-        case "Take screenshot":
-          Screenshots.save(this, library, frame.snapshot(), gameTitle);
-          closePauseMenu(true);
-          break;
-        case "Achievements":
-          showAchievementsMenu();
-          break;
-        case "Emulation":
-          showEmulationMenu();
-          break;
-        case "Return to library":
-          closePauseMenu(false);
-          setPaused(true);
-          nativeStop();
-          finish();
-          break;
-        default:
-          closePauseMenu(true);
+    int[] items = raActive
+        ? new int[] {R.string.resume_game, R.string.take_screenshot, R.string.achievements,
+              R.string.emulation, R.string.return_to_library}
+        : new int[] {R.string.resume_game, R.string.take_screenshot, R.string.emulation,
+              R.string.return_to_library};
+    pauseMenu.replacePage(gameTitle, labels(items), -1, (d, choice) -> {
+      int item = items[choice];
+      if (item == R.string.take_screenshot) {
+        Screenshots.save(this, library, frame.snapshot(), gameTitle);
+        closePauseMenu(true);
+      } else if (item == R.string.achievements) {
+        showAchievementsMenu();
+      } else if (item == R.string.emulation) {
+        showEmulationMenu();
+      } else if (item == R.string.return_to_library) {
+        closePauseMenu(false);
+        setPaused(true);
+        nativeStop();
+        finish();
+      } else {
+        closePauseMenu(true);
       }
     });
+  }
+  private String[] labels(int... ids) {
+    String[] labels = new String[ids.length];
+    for (int index = 0; index < ids.length; index++) labels[index] = getString(ids[index]);
+    return labels;
   }
   private void showAchievementsMenu() {
     pauseBack = this::showGameMenu;
@@ -515,9 +523,9 @@ public final class CoreActivity extends Activity {
     String[] summary = RaBridge.nativeSummary().split("\t", -1);
     String header = null;
     if (summary.length >= 7) {
-      header = L10n.format(this, "%s of %s achievements unlocked", summary[2], summary[3])
-          + "  ·  " + L10n.format(this, "%s of %s points", summary[4], summary[5])
-          + (summary[6].equals("1") ? "  ·  " + L10n.text(this, "Hardcore") : "");
+      header = getString(R.string.x_of_x_achievements_unlocked, summary[2], summary[3]) + "  ·  "
+          + getString(R.string.x_of_x_points, summary[4], summary[5])
+          + (summary[6].equals("1") ? "  ·  " + getString(R.string.hardcore) : "");
     }
     java.util.List<RichRow.Entry> entries = new ArrayList<>();
     for (String row : rows) {
@@ -525,7 +533,8 @@ public final class CoreActivity extends Activity {
       if (part[0].equals("H") && !entries.isEmpty() && entries.get(entries.size() - 1).header)
         entries.remove(entries.size() - 1); // section left empty by filtered rows
       if (part[0].equals("H")) {
-        entries.add(RichRow.Entry.header(RaBridge.bucketLabel(Integer.parseInt(part[1]))));
+        entries.add(
+            RichRow.Entry.header(getString(RaBridge.bucketLabel(Integer.parseInt(part[1])))));
       } else if (part.length >= 7) {
         boolean unlocked = part[1].equals("1");
         String detail = part[3] + (part[5].isEmpty() ? "" : "  ·  " + part[5]);
@@ -535,12 +544,13 @@ public final class CoreActivity extends Activity {
     if (!entries.isEmpty() && entries.get(entries.size() - 1).header)
       entries.remove(entries.size() - 1);
     if (entries.isEmpty()) {
-      pauseMenu.replacePage("Achievements", new String[] {"No achievements for this game"}, -1,
-          (d, w) -> showGameMenu());
+      pauseMenu.replacePage(getString(R.string.achievements),
+          labels(R.string.no_achievements_for_this_game), -1, (d, w) -> showGameMenu());
       return;
     }
-    pauseMenu.replaceEntries(summary.length >= 7 && !summary[0].isEmpty() ? summary[0]
-            : L10n.text(this, "Achievements"),
+    pauseMenu.replaceEntries(summary.length >= 7 && !summary[0].isEmpty()
+            ? summary[0]
+            : getString(R.string.achievements),
         header, entries.toArray(new RichRow.Entry[0]), index -> {});
   }
   void onRaEvent(int kind, int value, String title, String text, String imageUrl) {
@@ -569,38 +579,39 @@ public final class CoreActivity extends Activity {
     }
     switch (kind) {
       case RaBridge.UNLOCK:
-        raPopup.show(title, text + "  ·  " + L10n.format(this, "%s points", String.valueOf(value)),
-            imageUrl);
+        raPopup.show(
+            title, text + "  ·  " + getString(R.string.x_points, String.valueOf(value)), imageUrl);
         break;
       case RaBridge.LOADED: {
         String[] counts = text.split("/");
         String summary = counts.length == 2 && !counts[1].equals("0")
-            ? L10n.format(this, "%s of %s achievements unlocked", counts[0], counts[1])
-            : L10n.text(this, "This game has no achievements yet");
+            ? getString(R.string.x_of_x_achievements_unlocked, counts[0], counts[1])
+            : getString(R.string.this_game_has_no_achievements_yet);
         raPopup.show(title, summary, imageUrl);
         break;
       }
       case RaBridge.LEADERBOARD:
-        raPopup.show(L10n.text(this, value == 0 ? "Leaderboard attempt started"
-                : value == 1 ? "Leaderboard attempt failed" : "Leaderboard submitted"),
+        raPopup.show(getString(value == 0 ? R.string.leaderboard_attempt_started
+                             : value == 1 ? R.string.leaderboard_attempt_failed
+                                          : R.string.leaderboard_submitted),
             value == 2 ? title + "  ·  " + text : title, null);
         break;
       case RaBridge.COMPLETED:
-        raPopup.show(L10n.format(this, value != 0 ? "Mastered %s" : "Completed %s", title),
+        raPopup.show(getString(value != 0 ? R.string.mastered_x : R.string.completed_x, title),
             null, imageUrl);
         break;
       case RaBridge.CONNECTION:
-        raPopup.show(L10n.text(this, value == 0 ? "RetroAchievements offline"
-                : "RetroAchievements reconnected"),
-            value == 0 ? L10n.text(this, "Unlocks will be sent when the connection returns")
-                       : null, null);
+        raPopup.show(getString(value == 0 ? R.string.retroachievements_offline
+                                          : R.string.retroachievements_reconnected),
+            value == 0 ? getString(R.string.ra_offline_detail) : null, null);
         break;
       case RaBridge.LOGIN_FAILED:
-        raPopup.show(L10n.text(this, "RetroAchievements sign-in failed"), text, null);
+        raPopup.show(getString(R.string.ra_sign_in_failed), text, null);
         break;
       case RaBridge.ERROR:
-        raPopup.show("RetroAchievements", value == RaBridge.NO_GAME_LOADED
-            ? L10n.text(this, "This game is not recognized by RetroAchievements") : text, null);
+        raPopup.show("RetroAchievements",
+            value == RaBridge.NO_GAME_LOADED ? getString(R.string.ra_game_not_recognized) : text,
+            null);
         break;
       default:
         break;
@@ -620,26 +631,30 @@ public final class CoreActivity extends Activity {
   }
   private void showEmulationMenu() {
     pauseBack = this::showGameMenu;
-    pauseMenu.replacePage("Emulation",
-        new String[] {"Display modes", "Automatic states"}, -1, (d, w) -> {
-          if (w == 0) showDisplayModesMenu();
-          if (w == 1) showBooleanMenu("Automatic states", "autoStates", false,
-              this::showEmulationMenu);
+    pauseMenu.replacePage(getString(R.string.emulation),
+        labels(R.string.display_modes, R.string.automatic_states), -1, (d, w) -> {
+          if (w == 0)
+            showDisplayModesMenu();
+          if (w == 1)
+            showBooleanMenu(
+                getString(R.string.automatic_states), "autoStates", false, this::showEmulationMenu);
         });
   }
   private void showDisplayModesMenu() {
     pauseBack = this::showEmulationMenu;
-    pauseMenu.replacePage("Display modes",
+    pauseMenu.replacePage(getString(R.string.display_modes),
         new String[] {"Game Boy", "Game Boy Color"}, -1, (d, w) -> {
-          if (w == 0) showConsoleDisplayMenu(true);
-          if (w == 1) showConsoleDisplayMenu(false);
+          if (w == 0)
+            showConsoleDisplayMenu(true);
+          if (w == 1)
+            showConsoleDisplayMenu(false);
         });
   }
   private void showConsoleDisplayMenu(boolean gameBoy) {
     pauseBack = this::showDisplayModesMenu;
     String[] labels = gameBoy
-        ? new String[] {"Green palette", "Dot matrix", "LCD blending"}
-        : new String[] {"Screen filter", "LCD blending"};
+        ? labels(R.string.green_palette, R.string.dot_matrix, R.string.lcd_blending)
+        : labels(R.string.screen_filter, R.string.lcd_blending);
     String[] keys = gameBoy
         ? new String[] {"gbGreen", "gbDotMatrix", "gbLcd"}
         : new String[] {"gbcScreenFilter", "gbcLcd"};
@@ -650,7 +665,7 @@ public final class CoreActivity extends Activity {
   private void showBooleanMenu(
       String label, String key, boolean defaultValue, Runnable parentMenu) {
     pauseBack = parentMenu;
-    pauseMenu.replacePage(label, new String[] {"Off", "On"},
+    pauseMenu.replacePage(label, labels(R.string.off, R.string.on),
         library.get(key, defaultValue) ? 1 : 0, (d, w) -> {
           boolean enabled = w == 1;
           library.put(key, enabled);

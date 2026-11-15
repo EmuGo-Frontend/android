@@ -52,9 +52,17 @@ final class PocketDialog {
       this.activity = activity;
     }
 
+    Builder setTitle(int value) {
+      return setTitle(activity.getString(value));
+    }
+
     Builder setTitle(String value) {
       title = value;
       return this;
+    }
+
+    Builder setMessage(int value) {
+      return setMessage(activity.getString(value));
     }
 
     Builder setMessage(String value) {
@@ -82,10 +90,18 @@ final class PocketDialog {
       return this;
     }
 
+    Builder setPositiveButton(int label, DialogInterface.OnClickListener click) {
+      return setPositiveButton(activity.getString(label), click);
+    }
+
     Builder setPositiveButton(String label, DialogInterface.OnClickListener click) {
       positiveLabel = label;
       positiveClick = click;
       return this;
+    }
+
+    Builder setNegativeButton(int label, DialogInterface.OnClickListener click) {
+      return setNegativeButton(activity.getString(label), click);
     }
 
     Builder setNegativeButton(String label, DialogInterface.OnClickListener click) {
@@ -321,7 +337,7 @@ final class PocketDialog {
 
     private TextView label(String value, int size, int color, Typeface face) {
       TextView text = new TextView(activity);
-      text.setText(L10n.text(activity, value));
+      text.setText(value);
       text.setTextSize(size);
       text.setTextColor(color);
       text.setTypeface(face);
@@ -343,8 +359,7 @@ final class PocketDialog {
         check.setBounds(0, 0, dp(18), dp(18));
         check.setTint(colors.foreground);
         row.setCompoundDrawablesRelative(null, null, check, null);
-        row.setContentDescription(L10n.text(activity, name) + ", "
-            + L10n.text(activity, "selected"));
+        row.setContentDescription(name + ", " + activity.getString(R.string.selected));
       }
       row.setGravity(Gravity.CENTER_VERTICAL);
       row.setPadding(dp(14), dp(6), dp(14), dp(6));

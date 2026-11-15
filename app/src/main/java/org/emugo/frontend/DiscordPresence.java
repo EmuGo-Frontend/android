@@ -139,7 +139,7 @@ final class DiscordPresence {
 
   /** Launcher presence. */
   static void browsing(Context context) {
-    show(context, "Browsing the library", null, null, null, 0);
+    show(context, context.getString(R.string.browsing_the_library), null, null, null, 0);
   }
 
   /** In-game presence; state is the system name or RetroAchievements rich presence. */
@@ -174,7 +174,7 @@ final class DiscordPresence {
   /** Opens Discord's consent page in the browser and waits for the redirect on 127.0.0.1. */
   static void signIn(Activity activity) {
     if (!available) {
-      PocketNotice.show(activity, "Discord is not available in this build");
+      PocketNotice.show(activity, R.string.discord_unavailable);
       return;
     }
     stopServer();
@@ -187,8 +187,8 @@ final class DiscordPresence {
       socket = new ServerSocket(REDIRECT_PORT, 1, InetAddress.getByName("127.0.0.1"));
       socket.setSoTimeout(300000);
     } catch (Exception e) {
-      PocketNotice.show(activity, L10n.format(activity, "Discord sign-in failed: %s",
-          String.valueOf(e.getMessage())));
+      PocketNotice.show(activity,
+          activity.getString(R.string.discord_sign_in_failed_x, String.valueOf(e.getMessage())));
       return;
     }
     server = socket;
@@ -209,7 +209,7 @@ final class DiscordPresence {
         activity.startActivity(new Intent(Intent.ACTION_VIEW, url));
       } catch (Exception none) {
         stopServer();
-        PocketNotice.show(activity, "No browser available");
+        PocketNotice.show(activity, R.string.no_browser_available);
       }
     }
   }
@@ -266,7 +266,8 @@ final class DiscordPresence {
             if (valid) {
               nativeGetToken(APPLICATION_ID, code, pendingVerifier, REDIRECT_URI);
             } else {
-              PocketNotice.show(activity, L10n.format(activity, "Discord sign-in failed: %s", failure));
+              PocketNotice.show(
+                  activity, activity.getString(R.string.discord_sign_in_failed_x, failure));
             }
           });
           return;

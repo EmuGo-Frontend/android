@@ -20,9 +20,11 @@ public final class InstallResultReceiver extends BroadcastReceiver {
     } else if (status != PackageInstaller.STATUS_SUCCESS
         && status != PackageInstaller.STATUS_FAILURE_ABORTED) {
       String message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
-      Toast.makeText(context,
-               L10n.format(context, "Install failed: %s", message == null ? "" : message),
-               Toast.LENGTH_LONG)
+      Toast
+          .makeText(context,
+              L10n.wrap(context).getString(
+                  R.string.install_failed_x, message == null ? "" : message),
+              Toast.LENGTH_LONG)
           .show();
     }
   }
