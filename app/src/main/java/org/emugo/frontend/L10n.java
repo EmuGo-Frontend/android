@@ -267,6 +267,21 @@ final class L10n {
     add("Browsing the library", "Stöbert in der Bibliothek");
     add("Take one from the pause menu of a built-in game",
         "Nimm einen über das Pausenmenü eines integrierten Spiels auf");
+    // Updater.
+    add("EmuGo! is up to date (%s)", "EmuGo! ist aktuell (%s)");
+    add("EmuGo! %s is available", "EmuGo! %s ist verfügbar");
+    add("Download and install", "Herunterladen und installieren");
+    add("No changelog provided", "Keine Änderungen angegeben");
+    add("Starting download…", "Download wird gestartet…");
+    add("Downloading EmuGo! %s", "EmuGo! %s wird heruntergeladen");
+    add("Download failed: %s", "Download fehlgeschlagen: %s");
+    add("Install failed: %s", "Installation fehlgeschlagen: %s");
+    add("Allow updates", "Updates erlauben");
+    add("Android needs your permission before EmuGo! can install its own updates. Turn on \"Allow from this source\" and come back.",
+        "Android braucht deine Erlaubnis, bevor EmuGo! eigene Updates installieren kann. Aktiviere „Dieser Quelle vertrauen“ und kehre zurück.");
+    add("Open settings", "Einstellungen öffnen");
+    add("Updates", "Updates");
+    add("Tap to see what's new and install it", "Tippen, um die Neuerungen zu sehen und zu installieren");
   }
 
   private L10n() {}

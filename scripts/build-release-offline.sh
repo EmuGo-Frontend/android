@@ -10,8 +10,8 @@ set -eu
 export SIGNING_KEY_ALIAS="${SIGNING_KEY_ALIAS:-upload}"
 export SIGNING_KEY_PASSWORD="${SIGNING_KEY_PASSWORD:-$SIGNING_STORE_PASSWORD}"
 export SIGNING_KEYSTORE SIGNING_STORE_PASSWORD
-export VERSION_NAME="${VERSION_NAME:-1.0.1}"
-export VERSION_CODE="${VERSION_CODE:-101}"
+export VERSION_NAME="${VERSION_NAME:-1.0.2}"
+export VERSION_CODE="${VERSION_CODE:-102}"
 workspace=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 export OUTPUT_APK="${OUTPUT_APK:-$workspace/EmuGo-$VERSION_NAME.apk}"
 exec sh "$workspace/scripts/build-debug-offline.sh"

@@ -111,7 +111,10 @@ public class MainActivity extends Activity {
         restoreSelection(Screen.DISCORD, false);
       }
     });
-    UpdateChecker.check(this, false);
+    UpdateChecker.schedule(this);
+    handler.post(updateTimer);
+    requestNotificationPermission();
+    handleUpdateIntent(getIntent());
     handler.postDelayed(this::tick, 1000);
     String retro = library.local.getString("retroSavesRoot", null);
     if (retro != null && library.root != null)
@@ -119,9 +122,42 @@ public class MainActivity extends Activity {
     if (!library.local.getBoolean("onboarded", false))
       handler.postDelayed(this::onboarding, 400);
   }
+  // While EmuGo! is open, check every 15 minutes too; new versions only ever produce one
+  // Android notification each (shared with the background job).
+  private final Runnable updateTimer = new Runnable() {
+    public void run() {
+      UpdateChecker.check(MainActivity.this, false);
+      handler.postDelayed(this, UpdateChecker.INTERVAL_MILLIS);
+    }
+  };
+  private static final int REQUEST_NOTIFICATIONS = 50;
+  private void requestNotificationPermission() {
+    if (Build.VERSION.SDK_INT < 33
+        || checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            == PackageManager.PERMISSION_GRANTED
+        || library.local.getBoolean("notificationPermissionAsked", false))
+      return;
+    library.local.edit().putBoolean("notificationPermissionAsked", true).apply();
+    requestPermissions(
+        new String[] {android.Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+  }
+  @Override
+  protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    setIntent(intent);
+    handleUpdateIntent(intent);
+  }
+  /** Tapping the update notification opens the changelog and installer. */
+  private void handleUpdateIntent(Intent intent) {
+    if (intent != null && intent.getBooleanExtra(UpdateChecker.EXTRA_SHOW_UPDATE, false)) {
+      intent.removeExtra(UpdateChecker.EXTRA_SHOW_UPDATE);
+      UpdateChecker.check(this, true);
+    }
+  }
   @Override
   protected void onResume() {
     super.onResume();
+    UpdateChecker.resumePendingInstall(this);
     immersive();
     Brightness.apply(this, getWindow());
     updateSecond();
