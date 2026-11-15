@@ -47,20 +47,14 @@ final class RaProfile {
 
   private RaProfile() {}
 
+  /** The first system in EmuGo!'s list with this RetroAchievements console id. */
   static String consoleName(int console) {
-    switch (console) {
-      case 1: return "Sega Genesis";
-      case 2: return "Nintendo 64";
-      case 3: return "Super Nintendo";
-      case 4: return "Game Boy";
-      case 5: return "Game Boy Advance";
-      case 6: return "Game Boy Color";
-      case 7: return "Nintendo Entertainment System";
-      case 11: return "Sega Master System";
-      case 12: return "PlayStation";
-      case 15: return "Sega Game Gear";
-      default: return "";
-    }
+    if (console == 27)
+      return "Arcade";
+    for (Library.SystemInfo system : Library.SYSTEMS)
+      if (system.achievements == console)
+        return system.name;
+    return "";
   }
 
   private static JSONObject request(Context context, String... params) throws Exception {

@@ -72,20 +72,8 @@ final class RaBridge {
   private RaBridge() {}
 
   static int consoleId(String system) {
-    if (system == null) return 0;
-    switch (system) {
-      case "genesis": return 1;
-      case "n64": return 2;
-      case "snes": return 3;
-      case "gb": return 4;
-      case "gba": return 5;
-      case "gbc": return 6;
-      case "nes": return 7;
-      case "mastersystem": return 11;
-      case "gamegear": return 15;
-      case "psx": return 12;
-      default: return 0;
-    }
+    Library.SystemInfo info = system == null ? null : Library.system(system);
+    return info == null ? 0 : info.achievements;
   }
 
   static boolean signedIn(Library library) {

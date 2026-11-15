@@ -9,7 +9,8 @@
 // EmuGo! opened through Android's Storage Access Framework, so cores can read ROMs and disc
 // images in place without storage permissions. Everything else goes to the real filesystem.
 namespace vfs {
-void map(const std::string& path, int fd);
+// Returns the host's duplicate of fd (valid until clear()), or -1.
+int map(const std::string& path, int fd);
 void clear();
 retro_vfs_interface* interface();
 

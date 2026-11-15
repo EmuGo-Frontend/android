@@ -39,10 +39,6 @@ final class RetroArchLauncher {
     return game.system.retroArch != null && find(context.getPackageManager()) != null;
   }
 
-  static void launch(Activity activity, Library.Game game) {
-    launch(activity, game, null);
-  }
-
   /** done runs once the game was handed to RetroArch or the user closed the message. */
   static void launch(Activity activity, Library.Game game, Runnable done) {
     Runnable finished = () -> {

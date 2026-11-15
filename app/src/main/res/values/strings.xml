@@ -60,7 +60,6 @@
     <string name="blue">blue</string>
     <string name="display_modes">Display modes</string>
     <string name="automatic_states">Automatic states</string>
-    <string name="use_retroarch">Use RetroArch</string>
     <string name="green_palette">Green palette</string>
     <string name="dot_matrix">Dot matrix</string>
     <string name="lcd_blending">LCD blending</string>
@@ -286,4 +285,16 @@
     <string name="game_overrides_reset">Per-game settings reset</string>
     <string name="discord_reauth_title">Sign in to Discord again</string>
     <string name="discord_reauth_text">Your Discord sign-in has expired. Tap to sign in again so your games show on your profile.</string>
+    <string name="built_in_emulators">Built-in emulators</string>
+    <string name="built_in_per_system">Built-in emulator per system</string>
+    <plurals name="reset_system_overrides_n">
+        <item quantity="one">Reset %d system setting</item>
+        <item quantity="other">Reset %d system settings</item>
+    </plurals>
+    <string name="reset_system_overrides_question">Reset all system settings?</string>
+    <string name="reset_system_overrides_message">Every system goes back to the default for built-in emulators (%s).</string>
+    <string name="system_overrides_reset">System settings reset</string>
+    <string name="install_x_to_play_y">Install %1$s to play %2$s games.</string>
+    <string name="install_retroarch_to_play_x">Install RetroArch to play %s games.</string>
+    <string name="no_android_emulator_x">There is no Android emulator for %s yet.</string>
 </resources>

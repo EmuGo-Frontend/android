@@ -26,6 +26,7 @@ public class MainActivity extends Activity {
     SETTINGS,
     APPEARANCE,
     EMULATION,
+    BUILT_IN_SYSTEMS,
     DISPLAY_MODES,
     GAME_BOY_DISPLAY,
     GAME_BOY_COLOR_DISPLAY,
@@ -834,12 +835,81 @@ public class MainActivity extends Activity {
     title(R.string.emulation);
     row(R.string.display_modes, "", this::displayModes);
     booleanOption(R.string.automatic_states, "autoStates", false);
-    int overrides = library.autoStatesOverrideCount();
+    int overrides = library.overrideCount(Library.STATE_OVERRIDES);
     if (overrides > 0)
       row(getResources().getQuantityString(R.plurals.reset_game_overrides_n, overrides, overrides),
           "", this::resetGameOverrides);
     booleanOption(R.string.boot_intros, "bootIntros", true);
-    booleanOption(R.string.use_retroarch, "useRetroArch", false);
+    // Off: every game goes to its standalone app, then RetroArch.
+    row(R.string.built_in_emulators, onOff(library.builtInDefault()), () -> {
+      int previousScroll = scroll.getScrollY();
+      new PocketDialog.Builder(this)
+          .setTitle(R.string.built_in_emulators)
+          .setSingleChoiceItems(new String[] {onOff(false), onOff(true)},
+              library.builtInDefault() ? 1 : 0,
+              (dialog, choice) -> {
+                library.put("builtIn", choice == 1);
+                emulationSettings();
+                restoreSelection(Screen.EMULATION, false);
+                restoreScroll(previousScroll);
+              })
+          .show();
+    });
+    row(R.string.built_in_per_system, "", this::builtInSystems);
+  }
+  /** Default follows "Built-in emulators"; On and Off apply to one system. */
+  private void builtInSystems() {
+    screen = Screen.BUILT_IN_SYSTEMS;
+    body.removeAllViews();
+    title(R.string.built_in_per_system);
+    int overrides = library.overrideCount(Library.BUILT_IN_OVERRIDES);
+    if (overrides > 0)
+      row(getResources().getQuantityString(
+              R.plurals.reset_system_overrides_n, overrides, overrides),
+          "", this::resetSystemOverrides);
+    for (Library.SystemInfo system : Library.SYSTEMS) {
+      if (system.core == null)
+        continue;
+      Boolean override = library.override(Library.BUILT_IN_OVERRIDES, system.folder);
+      String state = override == null
+          ? getString(R.string.default_x, onOff(library.builtInDefault()))
+          : onOff(override);
+      row(system.name, state, () -> {
+        int previousScroll = scroll.getScrollY();
+        Boolean current = library.override(Library.BUILT_IN_OVERRIDES, system.folder);
+        new PocketDialog.Builder(this)
+            .setTitle(system.name)
+            .setSingleChoiceItems(
+                new String[] {getString(R.string.default_x, onOff(library.builtInDefault())),
+                    onOff(true), onOff(false)},
+                current == null ? 0
+                    : current   ? 1
+                                : 2,
+                (dialog, choice) -> {
+                  library.setOverride(Library.BUILT_IN_OVERRIDES, system.folder,
+                      choice == 0 ? null : Boolean.valueOf(choice == 1));
+                  builtInSystems();
+                  restoreSelection(Screen.BUILT_IN_SYSTEMS, false);
+                  restoreScroll(previousScroll);
+                })
+            .show();
+      });
+    }
+  }
+  private void resetSystemOverrides() {
+    new PocketDialog.Builder(this)
+        .setTitle(R.string.reset_system_overrides_question)
+        .setMessage(
+            getString(R.string.reset_system_overrides_message, onOff(library.builtInDefault())))
+        .setPositiveButton(R.string.reset,
+            (d, w) -> {
+              library.clearOverrides(Library.BUILT_IN_OVERRIDES);
+              PocketNotice.show(this, R.string.system_overrides_reset);
+              focusedPositions.remove(Screen.BUILT_IN_SYSTEMS);
+              builtInSystems();
+            })
+        .setNegativeButton(R.string.cancel, null)
+        .show();
   }
   /** Games set from the pause menu go back to the global automatic states setting. */
   private void resetGameOverrides() {
@@ -849,7 +919,7 @@ public class MainActivity extends Activity {
             R.string.reset_game_overrides_message, onOff(library.get("autoStates", false))))
         .setPositiveButton(R.string.reset,
             (d, w) -> {
-              library.clearAutoStatesOverrides();
+              library.clearOverrides(Library.STATE_OVERRIDES);
               PocketNotice.show(this, R.string.game_overrides_reset);
               focusedPositions.remove(Screen.EMULATION);
               emulationSettings();
@@ -1001,19 +1071,11 @@ public class MainActivity extends Activity {
       }
     }, "EmuGo-ra-profile").start();
   }
-  private static String[] raSystemFolders(int console) {
-    switch (console) {
-      case 4: case 6: return new String[] {"gb", "gbc"};
-      case 5: return new String[] {"gba"};
-      case 7: return new String[] {"nes"};
-      case 3: return new String[] {"snes"};
-      case 2: return new String[] {"n64"};
-      case 1: return new String[] {"genesis"};
-      case 11: return new String[] {"mastersystem"};
-      case 15: return new String[] {"gamegear"};
-      case 12: return new String[] {"psx"};
-      default: return new String[0];
-    }
+  /** Game Boy games may sit in either Game Boy folder; everything else by console id. */
+  private static boolean raConsoleMatches(Library.SystemInfo system, int console) {
+    boolean gameBoy = console == 4 || console == 6;
+    return system.achievements == console
+        || (gameBoy && (system.achievements == 4 || system.achievements == 6));
   }
   /** Finds the local ROM for a RetroAchievements game, preferring the one last played. */
   private Library.Game localGame(RaProfile.Game game) {
@@ -1021,7 +1083,8 @@ public class MainActivity extends Activity {
     String key = Library.matchKey(game.title);
     Library.Game byTitle = null, byPrefix = null;
     for (Library.SystemInfo system : library.visibleSystems()) {
-      if (!Arrays.asList(raSystemFolders(game.console)).contains(system.folder)) continue;
+      if (!raConsoleMatches(system, game.console))
+        continue;
       for (Library.Game candidate : library.games(system)) {
         if (remembered != null && remembered.equals(candidate.uri.toString())) return candidate;
         String candidateKey = Library.matchKey(candidate.fileTitle);
@@ -2044,16 +2107,7 @@ public class MainActivity extends Activity {
         || name.endsWith(".rtc") || name.matches(".*\\.state[0-9]+");
   }
   private void launch(Library.Game game) {
-    if (game.system.external != null) {
-      ExternalEmulators.launch(this, library, game);
-      return;
-    }
-    // Systems without a built-in core always go to RetroArch.
-    if (game.system.core == null || library.get("useRetroArch", false)) {
-      RetroArchLauncher.launch(this, game);
-      return;
-    }
-    CoreActivity.start(this, game);
+    GameLauncher.launch(this, library, game);
   }
   @Override
   public boolean dispatchKeyEvent(KeyEvent event) {
@@ -2166,6 +2220,9 @@ public class MainActivity extends Activity {
       case DISCORD:
         integrationSettings();
         break;
+      case BUILT_IN_SYSTEMS:
+        emulationSettings();
+        break;
       case RA_GAME:
         retroAchievementsProfile();
         break;
@@ -2227,6 +2284,9 @@ public class MainActivity extends Activity {
         break;
       case EMULATION:
         emulationSettings();
+        break;
+      case BUILT_IN_SYSTEMS:
+        builtInSystems();
         break;
       case DISPLAY_MODES:
         displayModes();

@@ -19,14 +19,16 @@ public final class CoreActivity extends Activity {
     System.loadLibrary("emugo");
   }
   static native String nativeRun(
-      CoreActivity owner, String core, String rom, String work, boolean autoStates);
+      CoreActivity owner, String core, String rom, String work, String saves, boolean autoStates);
   static native void nativeStop();
   static native void nativePause(boolean value);
   static native void nativeButtons(int bits);
   static native void nativeAutoStates(boolean value);
   static native void nativeSetVariable(String key, String value);
   static native void nativeAxes(int leftX, int leftY, int rightX, int rightY);
-  static native void nativeMapFile(String path, int fd);
+  /** Serves fd under path through the VFS; returns the host's duplicate of fd, or -1. */
+  static native int nativeMapFile(String path, int fd);
+  static native void nativePointer(int x, int y, boolean pressed);
   static native void nativeClearFiles();
   static native void nativeFlush();
   private final java.util.concurrent.ExecutorService saveSync =
@@ -45,6 +47,9 @@ public final class CoreActivity extends Activity {
   private String saveStem;
   private volatile boolean autoStates;
   private File work;
+  /** Where the core writes save files of its own: work/saves for ownSaves systems. */
+  private File saves;
+  private Library.SystemInfo info;
   private final Handler main = new Handler(Looper.getMainLooper());
   private String system;
   private boolean analogSystem;
@@ -107,6 +112,7 @@ public final class CoreActivity extends Activity {
     new Thread(() -> prepare(loading), "EmuGo-core").start();
   }
   private void prepare(TextView loading) {
+    info = Library.system(system);
     try {
       String coreName = getIntent().getStringExtra("core");
       String raw = getIntent().getStringExtra("uri");
@@ -114,6 +120,8 @@ public final class CoreActivity extends Activity {
         throw new IOException(getString(R.string.missing_game));
       work = new File(getFilesDir(), "run/" + fileTitle.replaceAll("[^a-zA-Z0-9._-]", "_"));
       work.mkdirs();
+      saves = info != null && info.ownSaves ? new File(work, "saves") : work;
+      saves.mkdirs();
       if (!autoStates) new File(work, "state.sav").delete();
       restoreSave();
       File core;
@@ -122,46 +130,22 @@ public final class CoreActivity extends Activity {
       } catch (IOException e) {
         throw new CoreFailure(e.getMessage());
       }
-      File rom = "psx".equals(system) ? linkDisc(Uri.parse(raw))
-                                      : new File(work, "game" + extension(Uri.parse(raw)));
-      if (!"psx".equals(system)) try (InputStream in = getContentResolver().openInputStream(Uri.parse(raw));
-          OutputStream out = new FileOutputStream(rom)) {
-        if (in == null)
-          throw new IOException(getString(R.string.could_not_open_rom));
-        copy(in, out);
-      }
-      if (rom.getName().toLowerCase().endsWith(".zip")) {
-        try (ZipInputStream zip = new ZipInputStream(new FileInputStream(rom))) {
-          ZipEntry entry;
-          File extracted = null;
-          while ((entry = zip.getNextEntry()) != null) {
-            if (entry.isDirectory())
-              continue;
-            String filename = new File(entry.getName()).getName();
-            if (filename.isEmpty())
-              continue;
-            extracted = new File(work, filename);
-            try (OutputStream out = new FileOutputStream(extracted)) {
-              copy(zip, out);
-            }
-            break;
-          }
-          if (extracted == null)
-            throw new IOException(getString(R.string.archive_has_no_game_file));
-          rom = extracted;
-        }
-      }
+      Library.Media media = info == null ? Library.Media.COPY : info.media;
+      Uri game = Uri.parse(raw);
+      File rom = media == Library.Media.LINK ? linkDisc(game)
+          : media == Library.Media.ARCHIVE   ? linkArchive(game)
+          : media == Library.Media.FOLDER    ? linkFolder(game)
+                                             : copyGame(game);
       prepareBios();
-      if ("n64".equals(system)) {
-        // EmuGo!'s host has no GL/Vulkan context, so use the software RDP.
-        nativeSetVariable("parallel-n64-gfxplugin", "angrylion");
-        nativeSetVariable("parallel-n64-rspplugin", "auto");
+      try {
+        prepareAssets();
+      } catch (IOException e) {
+        throw new CoreFailure(e.getMessage());
       }
       raActive = RaBridge.prepare(this, library, system, raListener);
       main.post(() -> ((ViewGroup) loading.getParent()).removeView(loading));
-      String error =
-          nativeRun(this, core.getAbsolutePath(), rom.getAbsolutePath(), work.getAbsolutePath(),
-              autoStates);
+      String error = nativeRun(this, core.getAbsolutePath(), rom.getAbsolutePath(),
+          work.getAbsolutePath(), saves.getAbsolutePath(), autoStates);
       if (!error.isEmpty())
         throw new CoreFailure(error);
       saveSync.shutdown();
@@ -173,9 +157,12 @@ public final class CoreActivity extends Activity {
       main.post(this::finish);
     } catch (Exception e) {
       Library.Game game = currentGame();
-      if (e instanceof CoreFailure && game != null && RetroArchLauncher.canRun(this, game)) {
-        // The built-in core is unavailable or broken; RetroArch takes over without asking.
-        main.post(() -> RetroArchLauncher.launch(this, game, this::finish));
+      if (e instanceof CoreFailure && game != null
+          && (ExternalEmulators.find(this, game.system) != null
+              || RetroArchLauncher.canRun(this, game))) {
+        // The built-in core is unavailable or broken: the standalone app or RetroArch takes
+        // over without asking.
+        main.post(() -> GameLauncher.withoutBuiltIn(this, game, this::finish));
         return;
       }
       String message = e.getMessage();
@@ -193,6 +180,25 @@ public final class CoreActivity extends Activity {
    * tells them to skip it.
    */
   private void prepareBios() {
+    // Other systems: each listed file is copied from ROMs/bios when present, and removed from
+    // the core's system folder when it is not.
+    Uri biosFolder = library.findChild(library.rootDocument(), "bios");
+    if (info != null)
+      for (String[] entry : info.bios) {
+        File destination = new File(work, entry[1]);
+        destination.getParentFile().mkdirs();
+        destination.delete();
+        try {
+          Uri bios = library.findChild(biosFolder, entry[0]);
+          if (bios != null)
+            try (InputStream in = getContentResolver().openInputStream(bios);
+                 OutputStream out = new FileOutputStream(destination)) {
+              copy(in, out);
+            }
+        } catch (Exception ignored) {
+          destination.delete();
+        }
+      }
     String source = "gb".equals(system) ? "gb.bin"
         : "gbc".equals(system)          ? "gbc.bin"
         : "gba".equals(system)          ? "gba.bin"
@@ -220,42 +226,101 @@ public final class CoreActivity extends Activity {
     nativeSetVariable("pcsx_rearmed_bios", "auto");
     nativeSetVariable("pcsx_rearmed_show_bios_bootlogo", intro ? "enabled" : "disabled");
   }
-  /**
-   * Gives the PS1 core a path to the disc without copying it: each file is opened through SAF
-   * and served to the core by the host's Libretro VFS under a virtual path. A .cue is copied (it
-   * is tiny) and its tracks are mapped next to it under their original names.
-   */
-  private File linkDisc(Uri uri) throws IOException {
-    File disc = new File(work, "disc");
-    nativeClearFiles();
-    File[] old = disc.listFiles();
-    if (old != null) for (File f : old) f.delete();
-    disc.mkdirs();
+  /** Cartridge games: copied into the work folder, a .zip unpacked to its first file. */
+  private File copyGame(Uri uri) throws IOException {
+    File rom = new File(work, "game" + extension(uri));
+    try (InputStream in = getContentResolver().openInputStream(uri);
+         OutputStream out = new FileOutputStream(rom)) {
+      if (in == null)
+        throw new IOException(getString(R.string.could_not_open_rom));
+      copy(in, out);
+    }
+    if (!rom.getName().toLowerCase(Locale.ROOT).endsWith(".zip"))
+      return rom;
+    try (ZipInputStream zip = new ZipInputStream(new FileInputStream(rom))) {
+      ZipEntry entry;
+      while ((entry = zip.getNextEntry()) != null) {
+        if (entry.isDirectory())
+          continue;
+        String filename = new File(entry.getName()).getName();
+        if (filename.isEmpty())
+          continue;
+        File extracted = new File(work, filename);
+        try (OutputStream out = new FileOutputStream(extracted)) {
+          copy(zip, out);
+        }
+        return extracted;
+      }
+    }
+    throw new IOException(getString(R.string.archive_has_no_game_file));
+  }
+  private static String documentName(Uri uri) {
     String id = android.provider.DocumentsContract.getDocumentId(uri);
     String name = id.substring(id.lastIndexOf('/') + 1);
-    if (name.contains(":")) name = name.substring(name.indexOf(':') + 1);
+    return name.contains(":") ? name.substring(name.indexOf(':') + 1) : name;
+  }
+  private Uri parentFolder(Uri uri) {
+    String id = android.provider.DocumentsContract.getDocumentId(uri);
+    int slash = id.lastIndexOf('/');
+    return slash < 0 ? null
+                     : android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                           library.root, id.substring(0, slash));
+  }
+  /** An empty folder in the work folder for linked files; earlier links are dropped. */
+  private File freshFolder(String name) {
+    File folder = new File(work, name);
+    nativeClearFiles();
+    deleteTree(folder);
+    folder.mkdirs();
+    return folder;
+  }
+  private static void deleteTree(File file) {
+    // Links are deleted themselves, never followed.
+    File[] children = java.nio.file.Files.isSymbolicLink(file.toPath()) ? null : file.listFiles();
+    if (children != null)
+      for (File child : children) deleteTree(child);
+    file.delete();
+  }
+  /**
+   * Disc games are read in place: each file is opened through SAF and appears in the work folder
+   * under its own name. A .cue or .gdi is copied (it is tiny) and the tracks it lists are linked
+   * next to it; .ccd and .mds images bring their files with the same name.
+   */
+  private File linkDisc(Uri uri) throws IOException {
+    File disc = freshFolder("disc");
+    String name = documentName(uri);
+    String lower = name.toLowerCase(Locale.ROOT);
     File target = new File(disc, name);
-    if (!name.toLowerCase(Locale.ROOT).endsWith(".cue")) {
+    boolean sheet = lower.endsWith(".cue") || lower.endsWith(".gdi");
+    if (!sheet)
       link(target, uri);
-      return target;
+    java.util.List<Library.Item> siblings = null;
+    if (lower.endsWith(".ccd") || lower.endsWith(".mds")) {
+      String stem = lower.substring(0, lower.lastIndexOf('.') + 1);
+      siblings = library.children(parentFolder(uri));
+      for (Library.Item item : siblings)
+        if (item.name.toLowerCase(Locale.ROOT).startsWith(stem) && !item.name.equals(name))
+          link(new File(disc, item.name), item.uri);
     }
-    ByteArrayOutputStream cue = new ByteArrayOutputStream();
+    if (!sheet)
+      return target;
+    ByteArrayOutputStream text = new ByteArrayOutputStream();
     try (InputStream in = getContentResolver().openInputStream(uri)) {
       if (in == null)
         throw new IOException(getString(R.string.could_not_open_rom));
-      copy(in, cue);
+      copy(in, text);
     }
     try (OutputStream out = new FileOutputStream(target)) {
-      cue.writeTo(out);
+      text.writeTo(out);
     }
-    int slash = id.lastIndexOf('/');
-    Uri parent = slash < 0 ? null
-        : android.provider.DocumentsContract.buildDocumentUriUsingTree(
-            library.root, id.substring(0, slash));
-    java.util.List<Library.Item> siblings = library.children(parent);
-    java.util.regex.Matcher m = java.util.regex.Pattern
-        .compile("(?im)^\\s*FILE\\s+(?:\"([^\"]+)\"|(\\S+))")
-        .matcher(cue.toString("UTF-8"));
+    siblings = library.children(parentFolder(uri));
+    // cue: FILE "Track 01.bin" BINARY. gdi: 1 0 4 2352 "track01.bin" 0 (first line is a count).
+    java.util.regex.Matcher m = lower.endsWith(".cue")
+        ? java.util.regex.Pattern.compile("(?im)^\\s*FILE\\s+(?:\"([^\"]+)\"|(\\S+))")
+              .matcher(text.toString("UTF-8"))
+        : java.util.regex.Pattern
+              .compile("(?m)^\\s*\\d+\\s+\\d+\\s+\\d+\\s+\\d+\\s+(?:\"([^\"]+)\"|(\\S+))")
+              .matcher(text.toString("UTF-8"));
     while (m.find()) {
       String track = new File(m.group(1) != null ? m.group(1) : m.group(2)).getName();
       Library.Item match = null;
@@ -266,6 +331,101 @@ public final class CoreActivity extends Activity {
       link(new File(disc, track), match.uri);
     }
     return target;
+  }
+  /**
+   * Arcade sets and DOS games: the archive keeps its name, which identifies the game. BIOS sets
+   * and parent sets from the same folder are linked next to it, so clones find their parent.
+   */
+  private File linkArchive(Uri uri) throws IOException {
+    File content = freshFolder("content");
+    String name = documentName(uri);
+    File target = new File(content, name);
+    link(target, uri);
+    String stem = name.toLowerCase(Locale.ROOT);
+    stem = stem.contains(".") ? stem.substring(0, stem.lastIndexOf('.')) : stem;
+    for (Library.Item item : library.children(parentFolder(uri))) {
+      String other = item.name.toLowerCase(Locale.ROOT);
+      if (other.equals(name.toLowerCase(Locale.ROOT)) || item.directory())
+        continue;
+      String otherStem = other.contains(".") ? other.substring(0, other.lastIndexOf('.')) : other;
+      if ((info != null && info.hidden.contains(other))
+          || (!otherStem.isEmpty() && stem.startsWith(otherStem)))
+        link(new File(content, item.name), item.uri);
+    }
+    return target;
+  }
+  /** ScummVM: every file in the game's folder, subfolders included, is linked in place. */
+  private File linkFolder(Uri uri) throws IOException {
+    File content = freshFolder("content");
+    linkTree(parentFolder(uri), content, 0);
+    return new File(content, documentName(uri));
+  }
+  private void linkTree(Uri folder, File target, int depth) throws IOException {
+    if (folder == null || depth > 6)
+      return;
+    for (Library.Item item : library.children(folder)) {
+      File destination = new File(target, item.name);
+      if (item.directory()) {
+        destination.mkdirs();
+        linkTree(item.uri, destination, depth + 1);
+      } else {
+        link(destination, item.uri);
+      }
+    }
+  }
+  /**
+   * Some cores need libretro's system files (blueMSX machines, PPSSPP fonts, ScummVM themes).
+   * They are downloaded once, like cores, and linked into the work folder.
+   */
+  private void prepareAssets() throws IOException {
+    if (info == null || info.assets == null)
+      return;
+    File pack = new File(getFilesDir(), "assets/" + info.assets);
+    File done = new File(pack, ".complete");
+    if (!done.exists()) {
+      deleteTree(pack);
+      pack.mkdirs();
+      URL url = new URL(
+          "https://buildbot.libretro.com/assets/system/" + Uri.encode(info.assets) + ".zip");
+      HttpURLConnection c = (HttpURLConnection) url.openConnection();
+      c.setConnectTimeout(15000);
+      c.setReadTimeout(30000);
+      if (c.getResponseCode() != 200)
+        throw new IOException(
+            getString(R.string.core_download_failed_x, "HTTP " + c.getResponseCode()));
+      String root = pack.getCanonicalPath() + File.separator;
+      try (ZipInputStream zip = new ZipInputStream(c.getInputStream())) {
+        ZipEntry entry;
+        while ((entry = zip.getNextEntry()) != null) {
+          File file = new File(pack, entry.getName());
+          if (!file.getCanonicalPath().startsWith(root))
+            continue; // no paths outside the pack
+          if (entry.isDirectory()) {
+            file.mkdirs();
+            continue;
+          }
+          file.getParentFile().mkdirs();
+          try (OutputStream out = new FileOutputStream(file)) {
+            copy(zip, out);
+          }
+        }
+      }
+      done.createNewFile();
+    }
+    File[] entries = pack.listFiles();
+    if (entries == null)
+      return;
+    for (File entry : entries) {
+      if (entry.getName().startsWith("."))
+        continue;
+      File destination = new File(work, entry.getName());
+      if (java.nio.file.Files.isSymbolicLink(destination.toPath()))
+        continue;
+      try {
+        android.system.Os.symlink(entry.getAbsolutePath(), destination.getPath());
+      } catch (android.system.ErrnoException ignored) {
+      }
+    }
   }
   /** The built-in core could not be downloaded or loaded, or it rejected the game. */
   private static final class CoreFailure extends IOException {
@@ -280,12 +440,22 @@ public final class CoreActivity extends Activity {
         ? null
         : new Library.Game(info, gameTitle, fileTitle, saveStem, Uri.parse(raw));
   }
+  /**
+   * Serves a SAF document under target: through the host's VFS, and as a link to the open file
+   * (/proc/self/fd) for cores that open files themselves. The host keeps its own duplicate.
+   */
   private void link(File target, Uri uri) throws IOException {
     try (ParcelFileDescriptor descriptor = getContentResolver().openFileDescriptor(uri, "r")) {
       if (descriptor == null)
         throw new IOException(getString(R.string.could_not_open_rom));
       target.delete();
-      nativeMapFile(target.getPath(), descriptor.getFd()); // the host keeps its own duplicate
+      int fd = nativeMapFile(target.getPath(), descriptor.getFd());
+      if (fd >= 0)
+        try {
+          android.system.Os.symlink("/proc/self/fd/" + fd, target.getPath());
+        } catch (android.system.ErrnoException ignored) {
+          // The VFS path still works for cores that use it.
+        }
     }
   }
   private File downloadCore(String name) throws IOException {
@@ -419,6 +589,11 @@ public final class CoreActivity extends Activity {
   private String safeTitle() {
     return fileTitle.replaceAll("[^a-zA-Z0-9._-]", "_");
   }
+  /** Called by the core thread with the core's display aspect ratio (0 when unknown). */
+  void onGeometry(float aspect) {
+    if (frame != null)
+      frame.coreAspect = aspect;
+  }
   /** Called by the core thread whenever save RAM was written to the work folder. */
   void onSaveWritten() {
     saveSync.execute(() -> syncSave(false));
@@ -454,7 +629,60 @@ public final class CoreActivity extends Activity {
           copy(in, stream);
         }
       }
+      if (info != null && info.ownSaves)
+        syncTree(this.saves, folder(saves, saveStem != null ? saveStem : safeTitle()));
     } catch (Exception ignored) {
+    }
+  }
+  // Files the core wrote itself, by path, with the modification time last copied to the ROMs
+  // folder: ROMs/emugo/saves/<ROM name>/ mirrors work/saves.
+  private final java.util.Map<String, Long> syncedSaves = new java.util.HashMap<>();
+  private Uri folder(Uri parent, String name) throws IOException {
+    Uri found = library.findChild(parent, name);
+    return found != null
+        ? found
+        : android.provider.DocumentsContract.createDocument(getContentResolver(), parent,
+              android.provider.DocumentsContract.Document.MIME_TYPE_DIR, name);
+  }
+  private void syncTree(File source, Uri target) throws IOException {
+    File[] files = source.listFiles();
+    if (files == null || target == null)
+      return;
+    for (File file : files) {
+      if (file.isDirectory()) {
+        syncTree(file, folder(target, file.getName()));
+        continue;
+      }
+      Long synced = syncedSaves.get(file.getPath());
+      if (synced != null && synced == file.lastModified())
+        continue;
+      Uri out = library.findChild(target, file.getName());
+      if (out == null)
+        out = android.provider.DocumentsContract.createDocument(
+            getContentResolver(), target, "application/octet-stream", file.getName());
+      try (InputStream in = new FileInputStream(file);
+           OutputStream stream = getContentResolver().openOutputStream(out, "wt")) {
+        copy(in, stream);
+      }
+      syncedSaves.put(file.getPath(), file.lastModified());
+    }
+  }
+  private void restoreTree(Uri source, File target) throws IOException {
+    if (source == null)
+      return;
+    target.mkdirs();
+    for (Library.Item item : library.children(source)) {
+      File destination = new File(target, item.name);
+      if (item.directory()) {
+        restoreTree(item.uri, destination);
+        continue;
+      }
+      try (InputStream in = getContentResolver().openInputStream(item.uri);
+           OutputStream out = new FileOutputStream(destination)) {
+        if (in != null)
+          copy(in, out);
+      }
+      syncedSaves.put(destination.getPath(), destination.lastModified());
     }
   }
   private void restoreSave() {
@@ -478,6 +706,8 @@ public final class CoreActivity extends Activity {
             copy(in, out);
           }
       }
+      if (info != null && info.ownSaves)
+        restoreTree(library.findChild(dir, saveStem != null ? saveStem : own), saves);
     } catch (Exception ignored) {
     }
   }
@@ -809,6 +1039,12 @@ public final class CoreActivity extends Activity {
     super.onPause();
     if (raPopup != null) raPopup.deactivate();
     nativeFlush(); // write save RAM before Android may kill the backgrounded process
+    // Cores with their own save files are copied out too.
+    if (info != null && info.ownSaves && !saveSync.isShutdown())
+      try {
+        saveSync.execute(() -> syncSave(false));
+      } catch (java.util.concurrent.RejectedExecutionException ignored) {
+      }
   }
   private static int axis(float value) {
     if (Math.abs(value) < 0.12f) return 0;
@@ -876,6 +1112,10 @@ public final class CoreActivity extends Activity {
     private boolean lcdBlend;
     private boolean filter;
     private boolean green;
+    /** Aspect ratio the core reports; used for systems without a fixed one. */
+    volatile float coreAspect;
+    // Where the picture was last drawn, for the touch screen.
+    private final RectF picture = new RectF();
     private static final int[] DMG_PALETTE = {
         0xff0f380f, 0xff306230, 0xff8bac0f, 0xff9bbc0f
     };
@@ -895,6 +1135,20 @@ public final class CoreActivity extends Activity {
       canvas.drawColor(0xff000000);
       draw(canvas);
       return shot;
+    }
+    /** Touches on the picture become the libretro pointer (the DS touch screen). */
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+      if (picture.isEmpty())
+        return false;
+      int action = event.getActionMasked();
+      boolean pressed = action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE;
+      float x = (event.getX() - picture.left) / picture.width() * 2f - 1f;
+      float y = (event.getY() - picture.top) / picture.height() * 2f - 1f;
+      boolean inside = x >= -1f && x <= 1f && y >= -1f && y <= 1f;
+      nativePointer(Math.round(Math.max(-1f, Math.min(1f, x)) * 0x7fff),
+          Math.round(Math.max(-1f, Math.min(1f, y)) * 0x7fff), pressed && inside);
+      return true;
     }
     synchronized void refreshFilters() {
       lcdBlend = gameBoy
@@ -939,13 +1193,15 @@ public final class CoreActivity extends Activity {
       if (bitmap != null) {
         if (!gameBoy && !gameBoyColor) {
           float aspect = superNintendo || fourByThree ? 4f / 3f
-              : bitmap.getWidth() / (float) bitmap.getHeight();
+              : coreAspect > 0                        ? coreAspect
+                               : bitmap.getWidth() / (float) bitmap.getHeight();
           float width = Math.min(getWidth(), getHeight() * aspect);
           float height = width / aspect;
           int left = Math.round((getWidth() - width) / 2f);
           int top = Math.round((getHeight() - height) / 2f);
           c.drawBitmap(bitmap, null,
               new Rect(left, top, left + Math.round(width), top + Math.round(height)), paint);
+          picture.set(left, top, left + width, top + height);
           return;
         }
         float fit = Math.min(
@@ -955,6 +1211,7 @@ public final class CoreActivity extends Activity {
         float left = (getWidth() - w) / 2f;
         float top = (getHeight() - h) / 2f;
         c.drawBitmap(bitmap, null, new RectF(left, top, left + w, top + h), paint);
+        picture.set(left, top, left + w, top + h);
         if (filter && scale >= 2f) {
           int integerScale = (int) scale;
           ensureScreenMask(bitmap.getWidth(), bitmap.getHeight(), integerScale);

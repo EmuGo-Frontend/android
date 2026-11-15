@@ -107,13 +107,14 @@ retro_vfs_interface table = {
 }  // namespace
 
 namespace vfs {
-void map(const std::string& path, int fd) {
+int map(const std::string& path, int fd) {
   int copy = dup(fd);
-  if (copy < 0) return;
+  if (copy < 0) return -1;
   std::lock_guard<std::mutex> guard(lock);
   auto found = mapped.find(path);
   if (found != mapped.end()) ::close(found->second);
   mapped[path] = copy;
+  return copy;
 }
 
 void clear() {

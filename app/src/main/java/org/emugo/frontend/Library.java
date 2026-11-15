@@ -28,43 +28,262 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 final class Library {
+  /** How a game file reaches the built-in host. */
+  enum Media {
+    /** Copied into the work folder; a .zip is unpacked first. Small cartridge games. */
+    COPY,
+    /** Read in place under its own name, with the disc's other tracks next to it. */
+    LINK,
+    /** Read in place as an archive the core opens itself (arcade sets, DOS games). */
+    ARCHIVE,
+    /** The whole folder around the game file is read in place (ScummVM). */
+    FOLDER
+  }
   static final class SystemInfo {
-    /**
-     * core runs inside EmuGo!, external names a standalone app, retroArch is the Libretro core
-     * RetroArch uses when neither is available. A system with only retroArch always opens there.
-     */
-    final String name, folder, core, external, retroArch;
+    final String name, folder;
     final String[] extensions;
-    SystemInfo(String n, String f, String c, String e, String x) {
-      this(n, f, c, e, c, x);
+    /** Libretro core for EmuGo!'s own host, or null when the host cannot run this system. */
+    String core;
+    /** Libretro core RetroArch uses when neither EmuGo! nor a standalone app can. */
+    String retroArch;
+    /** Standalone apps (keys in ExternalEmulators), tried in this order. */
+    String[] apps = {};
+    /** Other folder names people use for this system. */
+    String[] aliases = {};
+    /** RetroAchievements console id, 0 without achievements. */
+    int achievements;
+    Media media = Media.COPY;
+    /** Pairs of file name in ROMs/bios and path in the core's system folder. */
+    String[][] bios = {};
+    /** libretro asset pack the core needs in its system folder (buildbot assets/system). */
+    String assets;
+    /** The core writes its own save files, which are synced as a folder per game. */
+    boolean ownSaves;
+    /** Files in the system folder that are BIOS sets, not games. */
+    Set<String> hidden = new HashSet<>();
+    SystemInfo(String name, String folder, String extensions) {
+      this.name = name;
+      this.folder = folder;
+      this.extensions = extensions.split(",");
     }
-    SystemInfo(String n, String f, String c, String e, String r, String x) {
-      name = n;
-      folder = f;
-      core = c;
-      external = e;
-      retroArch = r;
-      extensions = x.split(",");
+    SystemInfo core(String value) {
+      core = value;
+      retroArch = value;
+      return this;
+    }
+    SystemInfo retroArch(String value) {
+      retroArch = value;
+      return this;
+    }
+    SystemInfo apps(String... value) {
+      apps = value;
+      return this;
+    }
+    SystemInfo aliases(String... value) {
+      aliases = value;
+      return this;
+    }
+    SystemInfo achievements(int console) {
+      achievements = console;
+      return this;
+    }
+    SystemInfo media(Media value) {
+      media = value;
+      return this;
+    }
+    SystemInfo bios(String... pairs) {
+      bios = new String[pairs.length / 2][];
+      for (int index = 0; index < bios.length; index++)
+        bios[index] = new String[] {pairs[index * 2], pairs[index * 2 + 1]};
+      return this;
+    }
+    SystemInfo assets(String value) {
+      assets = value;
+      return this;
+    }
+    SystemInfo ownSaves() {
+      ownSaves = true;
+      return this;
+    }
+    SystemInfo hidden(String... names) {
+      hidden.addAll(Arrays.asList(names));
+      return this;
     }
   }
+  // BIOS archives that sit next to arcade sets.
+  private static final String[] ARCADE_BIOS = {"neogeo.zip", "pgm.zip", "skns.zip", "decocass.zip",
+      "isgsm.zip", "nmk004.zip", "qsound.zip", "ym2608.zip", "cchip.zip", "bubsys.zip",
+      "namcoc69.zip", "namcoc70.zip", "namcoc75.zip", "midssio.zip", "coleco.zip", "spec128.zip",
+      "spectrum.zip", "msx.zip", "neocdz.zip", "ngp.zip", "channelf.zip", "fdsbios.zip"};
+  private static SystemInfo arcade(String name, String folder) {
+    return new SystemInfo(name, folder, "zip,7z")
+        .core("fbneo")
+        .achievements(27)
+        .media(Media.ARCHIVE)
+        .bios("neogeo.zip", "fbneo/neogeo.zip", "pgm.zip", "fbneo/pgm.zip")
+        .hidden(ARCADE_BIOS);
+  }
+  /**
+   * Launch order for every game: the built-in core (when it is turned on), then the first
+   * installed standalone app, then RetroArch.
+   */
   static final SystemInfo[] SYSTEMS = {
-      new SystemInfo("Game Boy", "gb", "gambatte", null, "gb,zip"),
-      new SystemInfo("Game Boy Color", "gbc", "gambatte", null, "gbc,zip"),
-      new SystemInfo("Game Boy Advance", "gba", "mgba", null, "gba,zip"),
-      new SystemInfo("Nintendo Entertainment System", "nes", "nestopia", null, "nes,zip"),
-      new SystemInfo("Super Nintendo", "snes", "snes9x", null, "sfc,smc,zip"),
-      new SystemInfo("Nintendo 64", "n64", "parallel_n64", null, "n64,z64,v64,zip"),
-      new SystemInfo("Sega Genesis", "genesis", "genesis_plus_gx", null, "md,gen,bin,zip"),
-      new SystemInfo("Sega Master System", "mastersystem", "genesis_plus_gx", null, "sms,zip"),
-      new SystemInfo("Sega Game Gear", "gamegear", "genesis_plus_gx", null, "gg,zip"),
-      new SystemInfo("PlayStation", "psx", "pcsx_rearmed", null, "chd,cue,pbp,iso,bin"),
-      new SystemInfo("PlayStation Portable", "psp", null, "ppsspp", "ppsspp", "iso,cso,chd,pbp"),
-      new SystemInfo("PlayStation 2", "ps2", null, "nethersx2", "play", "iso,chd,cso,bin"),
-      new SystemInfo("GameCube", "gc", null, "dolphin", "dolphin", "iso,rvz,gcm,ciso"),
-      new SystemInfo("Wii", "wii", null, "dolphin", "dolphin", "iso,rvz,wbfs"),
-      new SystemInfo("Nintendo DS", "nds", null, "melonds", "melondsds", "nds,dsi,zip,7z"),
-      new SystemInfo("Nintendo 3DS", "3ds", null, "azahar", "citra", "3ds,cci,cxi,cia"),
-      new SystemInfo("Nintendo Switch", "switch", null, "eden", "nsp,xci"),
+      new SystemInfo("Game Boy", "gb", "gb,zip").core("gambatte").achievements(4),
+      new SystemInfo("Game Boy Color", "gbc", "gbc,zip").core("gambatte").achievements(6),
+      new SystemInfo("Game Boy Advance", "gba", "gba,zip").core("mgba").achievements(5),
+      new SystemInfo("Nintendo Entertainment System", "nes", "nes,zip")
+          .core("nestopia")
+          .achievements(7)
+          .aliases("famicom"),
+      new SystemInfo("Super Nintendo", "snes", "sfc,smc,zip")
+          .core("snes9x")
+          .achievements(3)
+          .aliases("sfc"),
+      new SystemInfo("Nintendo 64", "n64", "n64,z64,v64,zip")
+          .core("mupen64plus_next_gles3")
+          .apps("mupen64plusfz")
+          .achievements(2),
+      new SystemInfo("Nintendo DS", "nds", "nds,dsi,zip")
+          .core("melondsds")
+          .apps("melonds")
+          .achievements(18)
+          .media(Media.LINK)
+          .bios("bios7.bin", "melonDS DS/bios7.bin", "bios9.bin", "melonDS DS/bios9.bin",
+              "firmware.bin", "melonDS DS/firmware.bin"),
+      new SystemInfo("Virtual Boy", "virtualboy", "vb,zip")
+          .core("mednafen_vb")
+          .achievements(28)
+          .aliases("vb"),
+      new SystemInfo("Pokémon Mini", "pokemini", "min,zip")
+          .core("pokemini")
+          .achievements(24)
+          .bios("bios.min", "bios.min"),
+      new SystemInfo("Game & Watch", "gameandwatch", "mgw,zip").core("gw").achievements(60),
+      new SystemInfo("Sega Genesis", "genesis", "md,gen,bin,zip")
+          .core("genesis_plus_gx")
+          .achievements(1)
+          .aliases("megadrive"),
+      new SystemInfo("Sega Master System", "mastersystem", "sms,zip")
+          .core("genesis_plus_gx")
+          .achievements(11),
+      new SystemInfo("Sega Game Gear", "gamegear", "gg,zip")
+          .core("genesis_plus_gx")
+          .achievements(15),
+      new SystemInfo("Sega SG-1000", "sg-1000", "sg,zip")
+          .core("genesis_plus_gx")
+          .achievements(33)
+          .aliases("sg1000"),
+      new SystemInfo("Sega CD", "segacd", "chd,cue,iso")
+          .core("genesis_plus_gx")
+          .achievements(9)
+          .media(Media.LINK)
+          .aliases("megacd")
+          .bios("bios_CD_U.bin", "bios_CD_U.bin", "bios_CD_E.bin", "bios_CD_E.bin", "bios_CD_J.bin",
+              "bios_CD_J.bin"),
+      new SystemInfo("Sega 32X", "sega32x", "32x,zip").core("picodrive").achievements(10),
+      new SystemInfo("Sega Saturn", "saturn", "chd,cue,iso,ccd,mds")
+          .core("yabasanshiro")
+          .apps("yabasanshiro")
+          .achievements(39)
+          .media(Media.LINK)
+          .bios("saturn_bios.bin", "saturn_bios.bin")
+          .ownSaves(),
+      new SystemInfo("Sega Dreamcast", "dreamcast", "chd,gdi,cdi,cue")
+          .core("flycast")
+          .apps("redream", "flycast")
+          .achievements(40)
+          .media(Media.LINK)
+          .bios("dc_boot.bin", "dc/dc_boot.bin", "dc_flash.bin", "dc/dc_flash.bin")
+          .ownSaves(),
+      new SystemInfo("PC Engine", "pcengine", "pce,zip")
+          .core("mednafen_pce_fast")
+          .achievements(8)
+          .aliases("tg16", "turbografx16"),
+      new SystemInfo("PC Engine CD", "pcenginecd", "chd,cue")
+          .core("mednafen_pce_fast")
+          .achievements(76)
+          .media(Media.LINK)
+          .aliases("tg-cd", "tgcd")
+          .bios("syscard3.pce", "syscard3.pce"),
+      new SystemInfo("Neo Geo Pocket", "ngp", "ngp,zip").core("mednafen_ngp").achievements(14),
+      new SystemInfo("Neo Geo Pocket Color", "ngpc", "ngc,ngpc,zip")
+          .core("mednafen_ngp")
+          .achievements(14),
+      new SystemInfo("WonderSwan", "wonderswan", "ws,zip").core("mednafen_wswan").achievements(53),
+      new SystemInfo("WonderSwan Color", "wonderswancolor", "wsc,zip")
+          .core("mednafen_wswan")
+          .achievements(53),
+      new SystemInfo("Atari 2600", "atari2600", "a26,bin,zip").core("stella2014").achievements(25),
+      new SystemInfo("Atari 7800", "atari7800", "a78,bin,zip")
+          .core("prosystem")
+          .achievements(51)
+          .bios("7800 BIOS (U).rom", "7800 BIOS (U).rom"),
+      new SystemInfo("Atari Lynx", "atarilynx", "lnx,zip")
+          .core("handy")
+          .achievements(13)
+          .aliases("lynx")
+          .bios("lynxboot.img", "lynxboot.img"),
+      new SystemInfo("ColecoVision", "colecovision", "col,zip")
+          .core("gearcoleco")
+          .achievements(44)
+          .aliases("coleco")
+          .bios("colecovision.rom", "colecovision.rom"),
+      new SystemInfo("MSX", "msx", "rom,mx1,mx2,dsk,zip")
+          .core("bluemsx")
+          .achievements(29)
+          .assets("blueMSX"),
+      arcade("Arcade", "arcade"),
+      arcade("FinalBurn Neo", "fbneo"),
+      arcade("Neo Geo", "neogeo"),
+      arcade("Capcom Play System", "cps1"),
+      arcade("Capcom Play System II", "cps2"),
+      arcade("Capcom Play System III", "cps3"),
+      new SystemInfo("DOS", "dos", "zip,dosz,exe,com,bat")
+          .core("dosbox_pure")
+          .achievements(26)
+          .media(Media.ARCHIVE)
+          .aliases("pc")
+          .ownSaves(),
+      new SystemInfo("ScummVM", "scummvm", "scummvm,svm")
+          .core("scummvm")
+          .apps("scummvm")
+          .media(Media.FOLDER)
+          .assets("ScummVM")
+          .ownSaves(),
+      new SystemInfo("PlayStation", "psx", "chd,cue,pbp,iso,bin")
+          .core("pcsx_rearmed")
+          .apps("duckstation")
+          .achievements(12)
+          .media(Media.LINK)
+          .aliases("ps1"),
+      new SystemInfo("PlayStation Portable", "psp", "iso,cso,chd,pbp")
+          .core("ppsspp")
+          .apps("ppsspp")
+          .achievements(41)
+          .media(Media.LINK)
+          .assets("PPSSPP")
+          .ownSaves(),
+      new SystemInfo("PlayStation 2", "ps2", "iso,chd,cso,bin")
+          .apps("nethersx2")
+          .retroArch("play")
+          .achievements(21),
+      new SystemInfo("PlayStation 3", "ps3", "iso,pkg").apps("aps3e", "rpcsx"),
+      new SystemInfo("PlayStation Vita", "psvita", "vpk,zip").apps("vita3k").aliases("vita"),
+      new SystemInfo("GameCube", "gc", "iso,rvz,gcm,ciso")
+          .apps("dolphin")
+          .retroArch("dolphin")
+          .achievements(16)
+          .aliases("gamecube"),
+      new SystemInfo("Wii", "wii", "iso,rvz,wbfs").apps("dolphin").retroArch("dolphin"),
+      new SystemInfo("Wii U", "wiiu", "wud,wux,wua,rpx,wuhb").apps("cemu"),
+      new SystemInfo("Nintendo 3DS", "3ds", "3ds,cci,cxi,cia")
+          .apps("azahar")
+          .retroArch("citra")
+          .achievements(62)
+          .aliases("n3ds"),
+      new SystemInfo("Nintendo Switch", "switch", "nsp,xci").apps("eden"),
+      new SystemInfo("Xbox", "xbox", "iso,xiso"),
+      new SystemInfo("Xbox 360", "xbox360", "iso,xex,zar").apps("ax360e"),
   };
   static final class Game {
     final SystemInfo system;
@@ -176,37 +395,53 @@ final class Library {
         return system;
     return null;
   }
-  // Per-game automatic states, synced in settings.json as {"gameKey": true|false}. A game without
-  // an entry follows the global "autoStates" setting.
-  private static final String STATE_OVERRIDES = "autoStatesOverrides";
-  synchronized Boolean autoStatesOverride(String gameKey) {
-    JSONObject overrides = settings.optJSONObject(STATE_OVERRIDES);
-    return overrides == null || !overrides.has(gameKey) ? null : overrides.optBoolean(gameKey);
+  // Overrides are synced in settings.json as {"key": true|false}; a missing key follows the
+  // global setting. Per game: automatic states, keyed by gameKey. Per system: the built-in core,
+  // keyed by system folder.
+  static final String STATE_OVERRIDES = "autoStatesOverrides";
+  static final String BUILT_IN_OVERRIDES = "builtInOverrides";
+  synchronized Boolean override(String setting, String key) {
+    JSONObject overrides = settings.optJSONObject(setting);
+    return overrides == null || !overrides.has(key) ? null : overrides.optBoolean(key);
+  }
+  /** null removes the override, so the global setting applies again. */
+  synchronized void setOverride(String setting, String key, Boolean value) {
+    JSONObject overrides = settings.optJSONObject(setting);
+    if (overrides == null)
+      overrides = new JSONObject();
+    try {
+      if (value == null)
+        overrides.remove(key);
+      else
+        overrides.put(key, value.booleanValue());
+    } catch (Exception ignored) {
+    }
+    put(setting, overrides);
+  }
+  synchronized int overrideCount(String setting) {
+    JSONObject overrides = settings.optJSONObject(setting);
+    return overrides == null ? 0 : overrides.length();
+  }
+  synchronized void clearOverrides(String setting) {
+    put(setting, new JSONObject());
+  }
+  Boolean autoStatesOverride(String gameKey) {
+    return override(STATE_OVERRIDES, gameKey);
   }
   boolean autoStates(String gameKey) {
     Boolean override = autoStatesOverride(gameKey);
     return override != null ? override : get("autoStates", false);
   }
-  /** null removes the override, so the game follows the global setting again. */
-  synchronized void setAutoStatesOverride(String gameKey, Boolean value) {
-    JSONObject overrides = settings.optJSONObject(STATE_OVERRIDES);
-    if (overrides == null)
-      overrides = new JSONObject();
-    try {
-      if (value == null)
-        overrides.remove(gameKey);
-      else
-        overrides.put(gameKey, value.booleanValue());
-    } catch (Exception ignored) {
-    }
-    put(STATE_OVERRIDES, overrides);
+  void setAutoStatesOverride(String gameKey, Boolean value) {
+    setOverride(STATE_OVERRIDES, gameKey, value);
   }
-  synchronized int autoStatesOverrideCount() {
-    JSONObject overrides = settings.optJSONObject(STATE_OVERRIDES);
-    return overrides == null ? 0 : overrides.length();
+  /** Global "Built-in emulators" switch; the old "Use RetroArch" setting turned it off. */
+  boolean builtInDefault() {
+    return get("builtIn", !get("useRetroArch", false));
   }
-  synchronized void clearAutoStatesOverrides() {
-    put(STATE_OVERRIDES, new JSONObject());
+  boolean builtIn(SystemInfo system) {
+    Boolean override = override(BUILT_IN_OVERRIDES, system.folder);
+    return override != null ? override : builtInDefault();
   }
   synchronized Set<String> favourites() {
     Set<String> out = new java.util.LinkedHashSet<>();
@@ -371,7 +606,7 @@ final class Library {
       if (dot < 0)
         continue;
       String ext = i.name.substring(dot + 1).toLowerCase(Locale.ROOT);
-      if (!extensions.contains(ext))
+      if (!extensions.contains(ext) || system.hidden.contains(i.name.toLowerCase(Locale.ROOT)))
         continue;
       if (ext.equals("bin") && mergeCue
           && names.contains(i.name.substring(0, dot).toLowerCase(Locale.ROOT) + ".cue"))
@@ -401,8 +636,8 @@ final class Library {
         Map<String, List<Item>> found = new HashMap<>();
         for (SystemInfo system : SYSTEMS) {
           Item directory = directories.get(system.folder);
-          if (directory == null && system.folder.equals("psx"))
-            directory = directories.get("ps1");
+          for (int alias = 0; directory == null && alias < system.aliases.length; alias++)
+            directory = directories.get(system.aliases[alias]);
           if (directory != null)
             found.put(system.folder, scanFiles(scanningRoot, directory.uri));
         }

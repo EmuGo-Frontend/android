@@ -60,7 +60,6 @@
     <string name="blue">Blau</string>
     <string name="display_modes">Anzeigemodi</string>
     <string name="automatic_states">Automatische Spielstände</string>
-    <string name="use_retroarch">RetroArch verwenden</string>
     <string name="green_palette">Grüne Farbpalette</string>
     <string name="dot_matrix">Punktmatrix</string>
     <string name="lcd_blending">LCD-Überblendung</string>
@@ -286,4 +285,16 @@
     <string name="game_overrides_reset">Spielspezifische Einstellungen zurückgesetzt</string>
     <string name="discord_reauth_title">Erneut bei Discord anmelden</string>
     <string name="discord_reauth_text">Deine Discord-Anmeldung ist abgelaufen. Tippe, um dich erneut anzumelden, damit deine Spiele in deinem Profil erscheinen.</string>
+    <string name="built_in_emulators">Integrierte Emulatoren</string>
+    <string name="built_in_per_system">Integrierter Emulator je System</string>
+    <plurals name="reset_system_overrides_n">
+        <item quantity="one">%d Systemeinstellung zurücksetzen</item>
+        <item quantity="other">%d Systemeinstellungen zurücksetzen</item>
+    </plurals>
+    <string name="reset_system_overrides_question">Alle Systemeinstellungen zurücksetzen?</string>
+    <string name="reset_system_overrides_message">Alle Systeme verwenden wieder die Standardeinstellung für integrierte Emulatoren (%s).</string>
+    <string name="system_overrides_reset">Systemeinstellungen zurückgesetzt</string>
+    <string name="install_x_to_play_y">Installiere %1$s, um Spiele für %2$s zu spielen.</string>
+    <string name="install_retroarch_to_play_x">Installiere RetroArch, um Spiele für %s zu spielen.</string>
+    <string name="no_android_emulator_x">Für %s gibt es noch keinen Android-Emulator.</string>
 </resources>

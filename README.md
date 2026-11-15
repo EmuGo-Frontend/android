@@ -24,19 +24,52 @@ Cores are downloaded the first time you start a game for a system.
 
 ## Systems
 
-| Runs inside EmuGo! | Core |
-| --- | --- |
-| Game Boy, Game Boy Color | gambatte |
-| Game Boy Advance | mGBA |
-| NES | Nestopia |
-| Super Nintendo | Snes9x |
-| Nintendo 64 | parallel_n64 (angrylion software renderer) |
-| Genesis, Master System, Game Gear | Genesis Plus GX |
-| PlayStation | PCSX ReARMed |
+Every game starts in the first of these that is available:
 
-PlayStation discs (CUE/BIN, CHD, PBP) are read in place, without copying them into the app.
+1. the built-in emulator, when the system has one and it is turned on,
+2. the first installed standalone app,
+3. RetroArch, with the matching core.
 
-PS2, PSP, Nintendo DS, GameCube, Wii, 3DS and Switch games open in an installed standalone emulator, such as NetherSX2, PPSSPP, melonDS, Dolphin, Azahar or Eden. If you prefer RetroArch for the built-in systems, turn on Settings > Emulation > Use RetroArch. When no standalone emulator is installed, or a built-in core cannot start, EmuGo! opens the game in RetroArch instead, as long as RetroArch is installed.
+Settings > Emulation > Built-in emulators turns the built-in emulators off for every system, and Built-in emulator per system overrides that for single systems. When a built-in core cannot start, the game moves on to the standalone app or RetroArch by itself. If nothing installed can play a system, EmuGo! names the app to install.
+
+| System | Folder | Built-in core | Standalone app |
+| --- | --- | --- | --- |
+| Game Boy, Game Boy Color | `gb`, `gbc` | gambatte | |
+| Game Boy Advance | `gba` | mGBA | |
+| NES | `nes` | Nestopia | |
+| Super Nintendo | `snes` | Snes9x | |
+| Nintendo 64 | `n64` | Mupen64Plus-Next (OpenGL ES) | Mupen64Plus FZ |
+| Nintendo DS | `nds` | melonDS DS (touch screen works) | melonDS |
+| Virtual Boy | `virtualboy` | Beetle VB | |
+| Pokémon Mini | `pokemini` | PokeMini | |
+| Game & Watch | `gameandwatch` | Handheld Electronic (GW) | |
+| Genesis, Master System, Game Gear, SG-1000 | `genesis`, `mastersystem`, `gamegear`, `sg-1000` | Genesis Plus GX | |
+| Sega CD | `segacd` | Genesis Plus GX | |
+| Sega 32X | `sega32x` | PicoDrive | |
+| Saturn | `saturn` | Yaba Sanshiro (OpenGL ES) | Yaba Sanshiro 2 |
+| Dreamcast | `dreamcast` | Flycast (OpenGL ES) | Redream, Flycast |
+| PC Engine, PC Engine CD | `pcengine`, `pcenginecd` | Beetle PCE Fast | |
+| Neo Geo Pocket (Color) | `ngp`, `ngpc` | Beetle NeoPop | |
+| WonderSwan (Color) | `wonderswan`, `wonderswancolor` | Beetle Cygne | |
+| Atari 2600, 7800, Lynx | `atari2600`, `atari7800`, `atarilynx` | Stella 2014, ProSystem, Handy | |
+| ColecoVision | `colecovision` | Gearcoleco | |
+| MSX | `msx` | blueMSX | |
+| Arcade, Neo Geo, CPS1 to CPS3 | `arcade`, `fbneo`, `neogeo`, `cps1`, `cps2`, `cps3` | FinalBurn Neo | |
+| DOS | `dos` | DOSBox Pure | |
+| ScummVM | `scummvm` | ScummVM | ScummVM |
+| PlayStation | `psx` | PCSX ReARMed | DuckStation |
+| PSP | `psp` | PPSSPP (OpenGL ES) | PPSSPP |
+| PS2 | `ps2` | | NetherSX2 |
+| PS3 | `ps3` | | aPS3e, RPCSX |
+| PS Vita | `psvita` | | Vita3K |
+| GameCube, Wii | `gc`, `wii` | | Dolphin |
+| Wii U | `wiiu` | | Cemu |
+| 3DS | `3ds` | | Azahar |
+| Switch | `switch` | | Eden |
+| Xbox 360 | `xbox360` | | aX360e |
+| Xbox | `xbox` | | none for Android yet |
+
+Discs, PSP and DS games, arcade sets and DOS archives are read in place, without copying them into the app. A .cue or .gdi brings its tracks along. Arcade clones find their parent set when it sits in the same folder. ScummVM games keep their own folder with a `.scummvm` file inside. MSX, PSP and ScummVM download libretro's system files once, like cores.
 
 ## Your ROMs folder
 
@@ -48,7 +81,7 @@ ROMs/
 ├── gb/ gba/ psx/ ... your games
 └── emugo/
     ├── settings.json
-    ├── saves/        battery saves, clocks and automatic states
+    ├── saves/        battery saves, clocks, automatic states and per-game save folders
     ├── screenshots/
     └── cores/
 ```
@@ -59,16 +92,24 @@ Saves and states from RetroArch can be imported from Settings > Library.
 
 ### BIOS files
 
-No BIOS is included. Put your own in `ROMs/bios/` to get the original boot intros:
+No BIOS is included. Put your own in `ROMs/bios/`:
 
 | File | System |
 | --- | --- |
-| `gb.bin` | Game Boy |
-| `gbc.bin` | Game Boy Color |
-| `gba.bin` | Game Boy Advance |
+| `gb.bin`, `gbc.bin`, `gba.bin` | Game Boy, Game Boy Color, Game Boy Advance boot intros |
 | `ps1.bin` | PlayStation |
+| `bios7.bin`, `bios9.bin`, `firmware.bin` | Nintendo DS (optional) |
+| `bios_CD_U.bin`, `bios_CD_E.bin`, `bios_CD_J.bin` | Sega CD |
+| `saturn_bios.bin` | Saturn (optional) |
+| `dc_boot.bin`, `dc_flash.bin` | Dreamcast (optional) |
+| `syscard3.pce` | PC Engine CD |
+| `lynxboot.img` | Atari Lynx |
+| `7800 BIOS (U).rom` | Atari 7800 (optional) |
+| `colecovision.rom` | ColecoVision |
+| `bios.min` | Pokémon Mini (optional) |
+| `neogeo.zip`, `pgm.zip` | Neo Geo and PGM arcade sets (or next to the games) |
 
-Settings > Emulation > Boot intros skips them again. Without `ps1.bin`, PlayStation games use the core's built-in open-source BIOS.
+Settings > Emulation > Boot intros skips the Game Boy and PlayStation intros again. Without `ps1.bin`, PlayStation games use the core's built-in open-source BIOS.
 
 ## Around the launcher
 
@@ -139,8 +180,8 @@ EmuGo! works well with [Syncthing](https://play.google.com/store/apps/details?id
 
 ## Known limits
 
-- The built-in host only runs software-rendered cores.
-- N64 uses a software renderer and does not reach full speed in every game.
+- OpenGL ES cores (N64, Saturn, Dreamcast, PSP) draw offscreen and each frame is copied to the screen, which costs a little speed compared with RetroArch.
+- Only the first controller is connected to the built-in host.
 - Standalone emulators decide for themselves how they handle launch requests, so some versions may not open games directly.
 
 ## License
