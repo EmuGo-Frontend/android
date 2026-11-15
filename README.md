@@ -12,6 +12,7 @@ The source is organized by responsibility: `MainActivity` handles launcher navig
 - Optional BIOS files go in `ROMs/bios/`: `gb.bin`, `gbc.bin`, `gba.bin`, and `ps1.bin`. With a BIOS present, the cores play the real boot intro; Emulation → Boot intros turns that off. Without `ps1.bin`, pcsx_rearmed uses its built-in open-source HLE BIOS. No BIOS is included with EmuGo!.
 - PS2, PSP, Nintendo DS, GameCube, Wii, 3DS, and Switch use installed standalone emulators, including NetherSX2 and melonDS. Launch compatibility depends on the emulator build and its intent support.
 - In-app games use sharp nearest-neighbor rendering. All in-app systems except Game Boy and Game Boy Color fill the largest viewport that preserves their aspect ratio; SNES uses 4:3. Game Boy and Game Boy Color retain integer scaling so their display effects align with source pixels. Game Boy has a green palette, dot matrix overlay, and frame blending for LCD flicker transparency. Game Boy Color has a subtle RGB LCD screen overlay and frame blending. Settings → Emulation → Display modes has a submenu for each console and an On/Off choice for each effect. The in-game pause menu has the same hierarchy. External emulators control their own rendering.
+- Battery saves are written whenever the game changes them (checked every few seconds) and when EmuGo! goes to the background, then synced to `ROMs/emugo/saves/` under the ROM's file name. Game Boy Color cartridge clocks are kept in a matching `.rtc` file.
 - Automatic save-state restore and write is off by default. Settings → Emulation → Automatic states opens an On/Off submenu, also available from the in-game pause menu. Ordinary in-game SRAM saves continue to sync. Turning automatic states on during a game saves a state when that game exits; automatic restore starts with the next launch.
 - Page headings remain visible when a menu scrolls. The full launcher UI stays visible on the primary screen when a second display is enabled, so a disconnected or unavailable second display cannot blank the primary screen.
 - Controller layout, game menu shortcut, light and dark mode, second-screen use, themes, and the supplied TechDweeb wallpapers are configurable.
@@ -30,7 +31,7 @@ Set up an Android SDK with API 36, NDK 30, Java 17, and Gradle. Run `gradle :app
 
 If Gradle is unavailable, set `ANDROID_HOME` and `JAVA_HOME`, then run `scripts/build-debug-offline.sh`. It creates `EmuGo-debug.apk` with the installed Android build tools.
 
-For a signed release, run `scripts/build-release-offline.sh` with `SIGNING_KEYSTORE`, `SIGNING_STORE_PASSWORD`, and optionally `SIGNING_KEY_ALIAS` (default `upload`) and `SIGNING_KEY_PASSWORD` in the environment. It creates `EmuGo-1.0.0.apk`. Keystores and credentials are never stored in the repository; `.gitignore` excludes them.
+For a signed release, run `scripts/build-release-offline.sh` with `SIGNING_KEYSTORE`, `SIGNING_STORE_PASSWORD`, and optionally `SIGNING_KEY_ALIAS` (default `upload`) and `SIGNING_KEY_PASSWORD` in the environment. It creates `EmuGo-<version>.apk`. Keystores and credentials are never stored in the repository; `.gitignore` excludes them.
 
 For Discord Rich Presence, first run `sh scripts/prepare-discord-sdk.sh /path/to/DiscordSocialSdk-1.10.19337.zip`. This puts the AAR in `.local-sdk/`, which is ignored by Git. Builds without it retain the rest of the app.
 

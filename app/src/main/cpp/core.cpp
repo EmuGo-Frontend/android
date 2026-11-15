@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -19,10 +20,12 @@
 
 static JavaVM* vm = nullptr;
 static jobject activity = nullptr;
-static jmethodID frameMethod = nullptr, audioMethod = nullptr, audioFormatMethod = nullptr;
+static jmethodID frameMethod = nullptr, audioMethod = nullptr, audioFormatMethod = nullptr,
+                 savedMethod = nullptr;
 static std::atomic<bool> running{false};
 static std::atomic<bool> paused{false};
 static std::atomic<bool> saveStatesEnabled{false};
+static std::atomic<bool> flushRequested{false};
 static std::atomic<unsigned> buttons{0};
 static std::atomic<int16_t> axes[4];
 static std::string systemDir, saveDir;
@@ -161,6 +164,48 @@ static int16_t inputState(unsigned port, unsigned device, unsigned index, unsign
   if (id > 15) return 0;
   return (buttons.load() & (1u << id)) ? 1 : 0;
 }
+// Battery saves (save RAM) and the cartridge clock (RTC) live in core memory. They are written to
+// the work folder whenever they change, so a killed process or a crash loses at most a few
+// seconds, never a whole session. Writes go to a temp file first and are renamed into place.
+struct BatteryFile {
+  unsigned id;
+  std::string path;
+  std::vector<uint8_t> written;
+};
+static void loadBattery(BatteryFile& file, void* (*data)(unsigned), size_t (*size)(unsigned)) {
+  if (!data || !size) return;
+  void* memory = data(file.id);
+  size_t length = size(file.id);
+  if (!memory || !length) return;
+  std::ifstream in(file.path, std::ios::binary);
+  if (in) in.read((char*)memory, length);
+  file.written.assign((uint8_t*)memory, (uint8_t*)memory + length);
+}
+// Returns true when the file on disk changed.
+static bool flushBattery(BatteryFile& file, void* (*data)(unsigned), size_t (*size)(unsigned)) {
+  if (!data || !size) return false;
+  void* memory = data(file.id);
+  size_t length = size(file.id);
+  if (!memory || !length) return false;
+  if (file.written.size() == length && std::memcmp(file.written.data(), memory, length) == 0)
+    return false;
+  std::string temp = file.path + ".tmp";
+  {
+    std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+    out.write((const char*)memory, length);
+    out.flush();
+    if (!out) return false;
+  }
+  if (std::rename(temp.c_str(), file.path.c_str()) != 0) return false;
+  file.written.assign((uint8_t*)memory, (uint8_t*)memory + length);
+  return true;
+}
+static void notifySaved(JNIEnv* env) {
+  if (env && activity && savedMethod) {
+    env->CallVoidMethod(activity, savedMethod);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+  }
+}
 template <typename T>
 static T symbol(const char* name) {
   return reinterpret_cast<T>(dlsym(handle, name));
@@ -198,6 +243,10 @@ extern "C" JNIEXPORT void JNICALL Java_org_emugo_frontend_CoreActivity_nativeCle
                                                                                         jclass) {
   vfs::clear();
 }
+extern "C" JNIEXPORT void JNICALL Java_org_emugo_frontend_CoreActivity_nativeFlush(JNIEnv*,
+                                                                                    jclass) {
+  flushRequested = true;
+}
 extern "C" JNIEXPORT void JNICALL Java_org_emugo_frontend_CoreActivity_nativeStop(JNIEnv*, jclass) {
   running = false;
 }
@@ -229,6 +278,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
   frameMethod = env->GetMethodID(cls, "onFrame", "([III)V");
   audioMethod = env->GetMethodID(cls, "onAudio", "([S)V");
   audioFormatMethod = env->GetMethodID(cls, "onAudioFormat", "(I)V");
+  savedMethod = env->GetMethodID(cls, "onSaveWritten", "()V");
   handle = dlopen(core.c_str(), RTLD_NOW | RTLD_LOCAL);
   if (!handle) {
     std::string err = dlerror();
@@ -288,15 +338,10 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
       env->CallVoidMethod(activity, audioFormatMethod,
                           (jint)(info.timing.sample_rate > 8000 ? info.timing.sample_rate : 44100));
       std::string save = saveDir + "/state.sav";
-      std::string sramPath = saveDir + "/save.srm";
-      if (memoryData && memorySize) {
-        void* memory = memoryData(RETRO_MEMORY_SAVE_RAM);
-        size_t size = memorySize(RETRO_MEMORY_SAVE_RAM);
-        if (memory && size) {
-          std::ifstream in(sramPath, std::ios::binary);
-          if (in) in.read((char*)memory, size);
-        }
-      }
+      BatteryFile sram{RETRO_MEMORY_SAVE_RAM, saveDir + "/save.srm", {}};
+      BatteryFile rtc{RETRO_MEMORY_RTC, saveDir + "/save.rtc", {}};
+      loadBattery(sram, memoryData, memorySize);
+      loadBattery(rtc, memoryData, memorySize);
       if (autoStates && unserialize) {
         std::ifstream in(save, std::ios::binary);
         if (in) {
@@ -312,7 +357,18 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
       paused = false;
       double fps = info.timing.fps > 1 ? info.timing.fps : 60.0;
       auto next = std::chrono::steady_clock::now();
+      auto lastCheck = next;
+      flushRequested = false;
       while (running) {
+        auto now = std::chrono::steady_clock::now();
+        if (flushRequested.exchange(false) || now - lastCheck > std::chrono::seconds(5)) {
+          lastCheck = now;
+          // The clock ticks constantly; it is written alongside save RAM changes and on exit.
+          if (flushBattery(sram, memoryData, memorySize)) {
+            flushBattery(rtc, memoryData, memorySize);
+            notifySaved(env);
+          }
+        }
         if (paused) {
           ra::idle();
           std::this_thread::sleep_for(std::chrono::milliseconds(16));
@@ -337,14 +393,8 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
           }
         }
       }
-      if (memoryData && memorySize) {
-        void* memory = memoryData(RETRO_MEMORY_SAVE_RAM);
-        size_t size = memorySize(RETRO_MEMORY_SAVE_RAM);
-        if (memory && size) {
-          std::ofstream out(sramPath, std::ios::binary);
-          out.write((const char*)memory, size);
-        }
-      }
+      flushBattery(sram, memoryData, memorySize);
+      flushBattery(rtc, memoryData, memorySize);
       ra::gameUnloaded();
       unload();
     }

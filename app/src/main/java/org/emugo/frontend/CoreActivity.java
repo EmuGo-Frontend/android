@@ -28,6 +28,9 @@ public final class CoreActivity extends Activity {
   static native void nativeAxes(int leftX, int leftY, int rightX, int rightY);
   static native void nativeMapFile(String path, int fd);
   static native void nativeClearFiles();
+  static native void nativeFlush();
+  private final java.util.concurrent.ExecutorService saveSync =
+      java.util.concurrent.Executors.newSingleThreadExecutor();
   private FrameView frame;
   private PocketDialog.Builder pauseMenu;
   private Dialog pauseDialog;
@@ -153,7 +156,12 @@ public final class CoreActivity extends Activity {
               autoStates);
       if (!error.isEmpty())
         throw new IOException(error);
-      syncSave();
+      saveSync.shutdown();
+      try {
+        saveSync.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS);
+      } catch (InterruptedException ignored) {
+      }
+      syncSave(true);
       main.post(this::finish);
     } catch (Exception e) {
       String message = e.getMessage();
@@ -381,7 +389,15 @@ public final class CoreActivity extends Activity {
   private String safeTitle() {
     return fileTitle.replaceAll("[^a-zA-Z0-9._-]", "_");
   }
-  private void syncSave() {
+  /** Called by the core thread whenever save RAM was written to the work folder. */
+  void onSaveWritten() {
+    saveSync.execute(() -> syncSave(false));
+  }
+  /**
+   * Copies the work folder's battery save (and clock) to ROMs/emugo/saves; on exit also the
+   * automatic state. Battery files use the ROM's file name, like RetroArch.
+   */
+  private synchronized void syncSave(boolean includeState) {
     if (work == null || library.root == null)
       return;
     try {
@@ -390,12 +406,14 @@ public final class CoreActivity extends Activity {
       if (saves == null)
         saves = android.provider.DocumentsContract.createDocument(getContentResolver(), dir,
             android.provider.DocumentsContract.Document.MIME_TYPE_DIR, "saves");
-      for (String[] pair : new String[][] {{"state.sav", ".state"}, {"save.srm", ".srm"}}) {
-        if (pair[0].equals("state.sav") && !autoStates) continue;
+      for (String[] pair : new String[][] {
+               {"save.srm", ".srm"}, {"save.rtc", ".rtc"}, {"state.sav", ".state"}}) {
+        boolean state = pair[0].equals("state.sav");
+        if (state && (!autoStates || !includeState)) continue;
         File source = new File(work, pair[0]);
         if (!source.exists())
           continue;
-        String stem = pair[0].equals("save.srm") && saveStem != null ? saveStem : safeTitle();
+        String stem = !state && saveStem != null ? saveStem : safeTitle();
         String name = stem + pair[1];
         Uri out = library.findChild(saves, name);
         if (out == null)
@@ -412,20 +430,18 @@ public final class CoreActivity extends Activity {
   private void restoreSave() {
     try {
       Uri dir = library.findChild(library.ensureEmugo(), "saves");
-      for (String[] group : new String[][] {
-               {"state.sav", ".state", ".state.auto"},
-               {"save.srm", ".srm", ".sav"}}) {
+      String own = safeTitle();
+      String rom = saveStem != null ? saveStem : own;
+      // Most specific first: EmuGo!'s own automatic state wins over one imported from RetroArch.
+      String[][] groups = {
+          {"state.sav", own + ".state", rom + ".state", rom + ".state.auto", own + ".state.auto"},
+          {"save.srm", rom + ".srm", rom + ".sav", own + ".srm", own + ".sav"},
+          {"save.rtc", rom + ".rtc", own + ".rtc"}};
+      for (String[] group : groups) {
         if (group[0].equals("state.sav") && !autoStates) continue;
         Uri source = null;
-        String[] stems = saveStem == null ? new String[] {safeTitle()}
-            : new String[] {saveStem, safeTitle()};
-        for (String stem : stems) {
-          for (int suffix = 1; suffix < group.length; suffix++) {
-            source = library.findChild(dir, stem + group[suffix]);
-            if (source != null) break;
-          }
-          if (source != null) break;
-        }
+        for (int i = 1; i < group.length && source == null; i++)
+          source = library.findChild(dir, group[i]);
         if (source != null)
           try (InputStream in = getContentResolver().openInputStream(source);
               OutputStream out = new FileOutputStream(new File(work, group[0]))) {
@@ -733,6 +749,11 @@ public final class CoreActivity extends Activity {
   @Override
   public void onBackPressed() {
     menu();
+  }
+  @Override
+  protected void onPause() {
+    super.onPause();
+    nativeFlush(); // write save RAM before Android may kill the backgrounded process
   }
   private static int axis(float value) {
     if (Math.abs(value) < 0.12f) return 0;
