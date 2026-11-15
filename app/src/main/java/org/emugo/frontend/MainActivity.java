@@ -403,20 +403,28 @@ public class MainActivity extends Activity {
           : level <= 50             ? "tabler_battery_2"
           : level <= 75             ? "tabler_battery_3"
                                     : "tabler_battery_4";
-      statusIcon(batteryIcon, true);
+      boolean light = Color.luminance(bg) > 0.5;
+      int batteryColor = charging ? muted
+          : level <= 5            ? (light ? 0xffd32f2f : 0xffff5c5c)
+          : level <= 20           ? (light ? 0xffb88600 : 0xfff5c542)
+                                  : muted;
+      statusIcon(batteryIcon, true, batteryColor);
       TextView percent = text(level + "%", 12, false);
-      percent.setTextColor(muted);
+      percent.setTextColor(batteryColor);
       top.addView(percent);
     } catch (Exception ignored) {
     }
   }
   private void statusIcon(String name, boolean active) {
+    statusIcon(name, active, muted);
+  }
+  private void statusIcon(String name, boolean active, int color) {
     int drawable = getResources().getIdentifier(name, "drawable", getPackageName());
     if (drawable == 0)
       return;
     ImageView icon = new ImageView(this);
     icon.setImageResource(drawable);
-    icon.setColorFilter(muted);
+    icon.setColorFilter(color);
     icon.setAlpha(active ? 1f : 0.3f);
     LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(16), dp(16));
     params.rightMargin = dp(5);
