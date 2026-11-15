@@ -84,10 +84,18 @@ def main():
     mark.write_text(vector_icon(glyph_path()))
     adaptive = RES / "mipmap-anydpi-v26/ic_launcher.xml"
     adaptive.parent.mkdir(parents=True, exist_ok=True)
+    # Launcher-only padding; the plain mark is also the notification icon.
+    (RES / "drawable/ic_launcher_foreground.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher-only padding: launchers mask adaptive icons (often to a circle about 66 of 108
+     units across), so the mark is inset to keep clear of the edge. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_emugo_mark"
+    android:inset="15%"/>
+''')
     adaptive.write_text('''<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@android:color/black"/>
-    <foreground android:drawable="@drawable/ic_emugo_mark"/>
-    <monochrome android:drawable="@drawable/ic_emugo_mark"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+    <monochrome android:drawable="@drawable/ic_launcher_foreground"/>
 </adaptive-icon>
 ''')
     render_logo()
