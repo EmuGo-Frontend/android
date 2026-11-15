@@ -35,6 +35,9 @@ public class MainActivity extends Activity {
     SYSTEM_SETTINGS,
     ABOUT,
     LICENSES,
+    CORES,
+    STORAGE,
+    CREDITS,
     INFOCENTER,
     RETROACHIEVEMENTS,
     RA_PROFILE,
@@ -1224,38 +1227,174 @@ public class MainActivity extends Activity {
   private void about() {
     screen = Screen.ABOUT;
     body.removeAllViews();
-    title("EmuGo!OS", "");
-    row("OSS licenses", "EmuGo! · Nunito · Discord SDK notices", this::licenses);
-    row("Libretro cores", "Each downloaded core has its own upstream license",
-        () -> openUrl("https://docs.libretro.com/development/cores/developing-cores/"));
-    row("Syncthing", "Sync ROMs/emugo between devices", this::openSyncthingSettings);
+    title("About", "");
+    richRow(new RichRow.Entry("EmuGo! " + Version.name(this), L10n.text(this, "Check for updates"),
+                null, null, false),
+        () -> UpdateChecker.check(this, true));
+    row("What's new", "", this::whatsNew);
+    row("Device info", "", this::deviceInfo);
+    row("Installed cores", "", this::installedCores);
+    row("Storage", "", this::storage);
+    row("Source code", "", () -> openUrl(AboutInfo.REPOSITORY));
+    row("Report a problem", "", this::reportProblem);
+    row("Credits", "", this::credits);
+    row("OSS licenses", "", this::licenses);
   }
+  private void whatsNew() {
+    PocketNotice.show(this, "Loading…");
+    new Thread(() -> {
+      String text;
+      try {
+        text = AboutInfo.changelog(this);
+      } catch (Exception e) {
+        text = L10n.format(this, "Could not load release notes: %s", String.valueOf(e.getMessage()));
+      }
+      String notes = text;
+      runOnUiThread(() -> new PocketDialog.Builder(this)
+          .setTitle(L10n.format(this, "What's new in %s", Version.name(this)))
+          .setMessage(notes)
+          .setPositiveButton("Close", null)
+          .show());
+    }, "EmuGo-whats-new").start();
+  }
+  private void deviceInfo() {
+    String info = AboutInfo.deviceInfo(this);
+    new PocketDialog.Builder(this)
+        .setTitle("Device info")
+        .setMessage(info)
+        .setPositiveButton("Copy", (d, w) -> {
+          android.content.ClipboardManager clipboard =
+              (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+          clipboard.setPrimaryClip(android.content.ClipData.newPlainText("EmuGo! device info", info));
+          PocketNotice.show(this, "Copied");
+        })
+        .setNegativeButton("Close", null)
+        .show();
+  }
+  /** Opens a new GitHub issue with the device details already filled in. */
+  private void reportProblem() {
+    String body = "**What happened?**\n\n\n**Steps to reproduce**\n\n\n**Device**\n```\n"
+        + AboutInfo.deviceInfo(this) + "\n```\n";
+    openUrl(Uri.parse(AboutInfo.REPOSITORY + "/issues/new").buildUpon()
+                .appendQueryParameter("body", body)
+                .build()
+                .toString());
+  }
+  private void installedCores() {
+    screen = Screen.CORES;
+    body.removeAllViews();
+    title("Installed cores", "");
+    List<AboutInfo.Core> cores = AboutInfo.cores(this, library);
+    if (cores.isEmpty()) {
+      message("No cores downloaded yet");
+      return;
+    }
+    long unusedBytes = 0;
+    for (AboutInfo.Core core : cores) if (!core.used) unusedBytes += core.bytes;
+    if (unusedBytes > 0) {
+      long freed = unusedBytes;
+      row(L10n.format(this, "Remove unused cores (%s)", AboutInfo.formatBytes(freed)), "", () -> {
+        for (AboutInfo.Core core : cores)
+          if (!core.used) AboutInfo.removeCore(this, core.name);
+        PocketNotice.show(this, L10n.format(this, "Freed %s", AboutInfo.formatBytes(freed)));
+        focusedPositions.remove(Screen.CORES);
+        installedCores();
+      });
+    }
+    for (AboutInfo.Core core : cores) {
+      String detail = (core.systems.isEmpty() ? "" : core.systems + "  ·  ")
+          + L10n.text(this, core.used ? "In use" : "Not used by your library");
+      richRow(new RichRow.Entry(core.name, detail, AboutInfo.formatBytes(core.bytes), null,
+                  !core.used),
+          () -> new PocketDialog.Builder(this)
+              .setTitle(L10n.format(this, "Remove %s?", core.name))
+              .setMessage("It is downloaded again the next time a game needs it.")
+              .setPositiveButton("Remove", (d, w) -> {
+                AboutInfo.removeCore(this, core.name);
+                installedCores();
+                restoreSelection(Screen.CORES);
+              })
+              .setNegativeButton("Cancel", null)
+              .show());
+    }
+  }
+  private void storage() {
+    screen = Screen.STORAGE;
+    body.removeAllViews();
+    title("Storage", "");
+    message("Calculating…");
+    int generation = menuGeneration;
+    new Thread(() -> {
+      long cores = AboutInfo.size(AboutInfo.coresDir(this));
+      long images = AboutInfo.size(AboutInfo.imageCache(this));
+      long updates = AboutInfo.size(AboutInfo.updateCache(this));
+      long games = AboutInfo.temporaryGameFiles(this);
+      runOnUiThread(() -> {
+        if (menuGeneration != generation || screen != Screen.STORAGE) return;
+        body.removeAllViews();
+        richRow(new RichRow.Entry(L10n.text(this, "Cores"),
+                    L10n.text(this, "Emulator cores, managed under Installed cores"),
+                    AboutInfo.formatBytes(cores), null, false),
+            this::installedCores);
+        richRow(new RichRow.Entry(L10n.text(this, "Images"),
+                    L10n.text(this, "Badges, game icons and avatars"),
+                    AboutInfo.formatBytes(images), null, false),
+            null);
+        richRow(new RichRow.Entry(L10n.text(this, "Game files"),
+                    L10n.text(this, "Temporary copies of games and BIOS files"),
+                    AboutInfo.formatBytes(games), null, false),
+            null);
+        richRow(new RichRow.Entry(L10n.text(this, "Downloaded updates"), null,
+                    AboutInfo.formatBytes(updates), null, false),
+            null);
+        long clearable = images + games + updates;
+        row(L10n.format(this, "Clear cache (%s)", AboutInfo.formatBytes(clearable)), "", () -> {
+          new Thread(() -> {
+            AboutInfo.clearCache(this);
+            runOnUiThread(() -> {
+              PocketNotice.show(this, L10n.format(this, "Freed %s",
+                  AboutInfo.formatBytes(clearable)));
+              if (screen == Screen.STORAGE) storage();
+            });
+          }, "EmuGo-clear-cache").start();
+        });
+        message("Saves, states and settings are never removed here.");
+        restoreSelection(Screen.STORAGE);
+      });
+    }, "EmuGo-storage").start();
+  }
+  private void credits() {
+    screen = Screen.CREDITS;
+    body.removeAllViews();
+    title("Credits", "");
+    String[][] credits = {
+        {"RetroAchievements", "Achievements and rcheevos", "https://retroachievements.org"},
+        {"Libretro", "Emulator cores and the Libretro API", "https://www.libretro.com"},
+        {"Nunito", "Font by Vernon Adams, Cyreal and Jacques Le Bailly",
+            "https://fonts.google.com/specimen/Nunito"},
+        {"Tabler Icons", "Icons by Paweł Kuna", "https://tabler.io/icons"}};
+    for (String[] credit : credits)
+      richRow(new RichRow.Entry(credit[0], L10n.text(this, credit[1]), null, null, false),
+          credit[2] == null ? null : () -> openUrl(credit[2]));
+  }
+  // File, name, what it is used for, license.
+  private static final String[][] NOTICES = {
+      {"EmuGo-MIT.txt", "EmuGo!", "The launcher itself", "MIT License"},
+      {"rcheevos-MIT.txt", "rcheevos", "RetroAchievements runtime", "MIT License"},
+      {"Libretro-API.txt", "Libretro API", "Interface to the emulator cores", "MIT License"},
+      {"Discord-SDK-third-party.txt", "Discord Social SDK", "Discord Rich Presence",
+          "Notices for its components"},
+      {"Nunito-OFL.txt", "Nunito", "Interface font", "SIL Open Font License 1.1"},
+      {"Tabler-Icons-MIT.txt", "Tabler Icons", "Status and button icons", "MIT License"}};
   private void licenses() {
     screen = Screen.LICENSES;
     body.removeAllViews();
-    title("OSS licenses", "Open source components");
-    for (String file : new String[] {"EmuGo-MIT.txt", "Nunito-OFL.txt", "Tabler-Icons-MIT.txt",
-             "Libretro-API.txt", "rcheevos-MIT.txt", "Discord-SDK-third-party.txt"}) {
-      String label = file.replace(".txt", "").replace('-', ' ');
-      row(label, "Read notice", () -> showNotice(file, label));
-    }
-  }
-  private void showNotice(String file, String label) {
-    try (InputStream in = getAssets().open("notices/" + file)) {
-      byte[] data = new byte[in.available()];
-      int count = in.read(data);
-      String notice = new String(data, 0, count, java.nio.charset.StandardCharsets.UTF_8);
-      ScrollView scroll = new ScrollView(this);
-      TextView text = text(notice, 13, false);
-      text.setPadding(dp(18), dp(14), dp(18), dp(14));
-      scroll.addView(text);
-      new PocketDialog.Builder(this)
-          .setTitle(label)
-          .setView(scroll)
-          .setPositiveButton("Close", null)
-          .show();
-    } catch (Exception e) {
-      PocketNotice.show(this, e.getMessage());
+    title("OSS licenses", "");
+    for (String[] notice : NOTICES) {
+      String license = L10n.text(this, notice[3]);
+      richRow(new RichRow.Entry(notice[1], L10n.text(this, notice[2]) + "  ·  " + license, null,
+                  null, false),
+          () -> LicenseReader.open(this, library, notice[0], notice[1], license));
     }
   }
   private void toggle(String label, String key, boolean defaultValue) {
@@ -1818,6 +1957,9 @@ public class MainActivity extends Activity {
         settings();
         break;
       case LICENSES:
+      case CORES:
+      case STORAGE:
+      case CREDITS:
         about();
         break;
       case HOME:
@@ -1878,6 +2020,15 @@ public class MainActivity extends Activity {
         break;
       case LICENSES:
         licenses();
+        break;
+      case CORES:
+        installedCores();
+        break;
+      case STORAGE:
+        storage();
+        break;
+      case CREDITS:
+        credits();
         break;
       case INFOCENTER:
         infocenter();

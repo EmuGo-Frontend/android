@@ -282,6 +282,54 @@ final class L10n {
     add("Open settings", "Einstellungen öffnen");
     add("Updates", "Updates");
     add("Tap to see what's new and install it", "Tippen, um die Neuerungen zu sehen und zu installieren");
+    // Licenses.
+    add("The launcher itself", "Der Launcher selbst");
+    add("RetroAchievements runtime", "RetroAchievements-Laufzeit");
+    add("Interface to the emulator cores", "Schnittstelle zu den Emulator-Cores");
+    add("Discord Rich Presence", "Discord Rich Presence");
+    add("Notices for its components", "Hinweise zu seinen Komponenten");
+    add("Interface font", "Schriftart der Oberfläche");
+    add("Status and button icons", "Status- und Tastensymbole");
+    add("MIT License", "MIT-Lizenz");
+    add("SIL Open Font License 1.1", "SIL Open Font License 1.1");
+    add("D-pad", "Steuerkreuz");
+    add("Scroll", "Scrollen");
+    add("Page", "Seite");
+    // About page.
+    add("What's new", "Neuigkeiten");
+    add("Device info", "Geräteinfo");
+    add("Installed cores", "Installierte Cores");
+    add("Storage", "Speicher");
+    add("Source code", "Quellcode");
+    add("Report a problem", "Problem melden");
+    add("Credits", "Mitwirkende");
+    add("Could not load release notes: %s", "Versionshinweise konnten nicht geladen werden: %s");
+    add("What's new in %s", "Neu in %s");
+    add("No release notes for this version", "Keine Versionshinweise für diese Version");
+    add("Copy", "Kopieren");
+    add("Copied", "Kopiert");
+    add("No cores downloaded yet", "Noch keine Cores heruntergeladen");
+    add("Remove unused cores (%s)", "Ungenutzte Cores entfernen (%s)");
+    add("Freed %s", "%s freigegeben");
+    add("In use", "In Verwendung");
+    add("Not used by your library", "Von deiner Bibliothek nicht verwendet");
+    add("Remove %s?", "%s entfernen?");
+    add("It is downloaded again the next time a game needs it.", "Er wird erneut heruntergeladen, sobald ein Spiel ihn braucht.");
+    add("Remove", "Entfernen");
+    add("Calculating…", "Wird berechnet…");
+    add("Cores", "Cores");
+    add("Emulator cores, managed under Installed cores", "Emulator-Cores, verwaltet unter Installierte Cores");
+    add("Images", "Bilder");
+    add("Badges, game icons and avatars", "Abzeichen, Spielsymbole und Avatare");
+    add("Game files", "Spieldateien");
+    add("Temporary copies of games and BIOS files", "Temporäre Kopien von Spielen und BIOS-Dateien");
+    add("Downloaded updates", "Heruntergeladene Updates");
+    add("Clear cache (%s)", "Cache leeren (%s)");
+    add("Saves, states and settings are never removed here.", "Spielstände und Einstellungen werden hier nie entfernt.");
+    add("Achievements and rcheevos", "Erfolge und rcheevos");
+    add("Emulator cores and the Libretro API", "Emulator-Cores und die Libretro-API");
+    add("Font by Vernon Adams, Cyreal and Jacques Le Bailly", "Schrift von Vernon Adams, Cyreal und Jacques Le Bailly");
+    add("Icons by Paweł Kuna", "Symbole von Paweł Kuna");
   }
 
   private L10n() {}

@@ -4,6 +4,8 @@
   # EmuGo!
 
   A retro emulation frontend and home launcher for Android handhelds, inspired by the Analogue Pocket. Get it from [Releases](https://github.com/EmuGo-Frontend/android/releases/latest).
+
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/EmuGo-Frontend/android"><img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="56"></a>
 </div>
 
 <br>
