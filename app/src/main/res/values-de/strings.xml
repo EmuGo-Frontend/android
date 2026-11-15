@@ -275,4 +275,15 @@
     <string name="favourites_empty_hint">Drücke X bei einem Spiel, um es zu deinen Favoriten hinzuzufügen</string>
     <string name="added_x_to_favourites">%s zu den Favoriten hinzugefügt</string>
     <string name="removed_x_from_favourites">%s aus den Favoriten entfernt</string>
+    <string name="default_x">Standard (%s)</string>
+    <plurals name="reset_game_overrides_n">
+        <item quantity="one">%d spielspezifische Einstellung zurücksetzen</item>
+        <item quantity="other">%d spielspezifische Einstellungen zurücksetzen</item>
+    </plurals>
+    <string name="reset_game_overrides_question">Alle spielspezifischen Einstellungen zurücksetzen?</string>
+    <string name="reset_game_overrides_message">Alle Spiele verwenden wieder die Standardeinstellung für automatische Spielstände (%s).</string>
+    <string name="reset">Zurücksetzen</string>
+    <string name="game_overrides_reset">Spielspezifische Einstellungen zurückgesetzt</string>
+    <string name="discord_reauth_title">Erneut bei Discord anmelden</string>
+    <string name="discord_reauth_text">Deine Discord-Anmeldung ist abgelaufen. Tippe, um dich erneut anzumelden, damit deine Spiele in deinem Profil erscheinen.</string>
 </resources>

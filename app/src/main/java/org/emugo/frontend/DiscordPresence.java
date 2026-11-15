@@ -32,6 +32,9 @@ final class DiscordPresence {
   static final String REDIRECT_URI = "http://127.0.0.1:" + REDIRECT_PORT + "/callback";
   private static final String SCOPES = "openid sdk.social_layer_presence";
   private static final int STATUS_READY = 3;
+  static final String EXTRA_SHOW_DISCORD = "org.emugo.frontend.SHOW_DISCORD";
+  private static final String CHANNEL = "discord";
+  private static final int NOTIFICATION_ID = 4803;
 
   interface Listener {
     void onDiscordChanged();
@@ -42,6 +45,8 @@ final class DiscordPresence {
   private static Context app;
   private static int status;
   private static String pendingVerifier;
+  // Set while the saved sign-in is being refreshed, so a failure there asks for a new sign-in.
+  private static boolean refreshing;
   private static Listener listener;
   private static volatile ServerSocket server;
   // Desired presence, applied whenever the client becomes ready.
@@ -105,8 +110,10 @@ final class DiscordPresence {
     String access = prefs().getString("access", null);
     if (access != null && expires - System.currentTimeMillis() > 86400000L)
       nativeConnect(access);
-    else
+    else {
+      refreshing = true;
       nativeRefresh(APPLICATION_ID, refresh);
+    }
   }
 
   static boolean available() {
@@ -326,13 +333,24 @@ final class DiscordPresence {
 
   // Called from native code on the main thread.
   static void onToken(boolean ok, String access, String refresh, int expiresIn, String error) {
+    boolean wasRefresh = refreshing;
+    refreshing = false;
     if (!ok) {
       // A refresh token that no longer works means the user must sign in again.
       prefs().edit().clear().apply();
-      if (app != null)
+      if (app != null) {
+        if (wasRefresh)
+          notifySignInExpired(app);
         main.post(() -> changed());
+      }
       android.util.Log.w("EmuGo-Discord", "Token request failed: " + error);
       return;
+    }
+    if (app != null) {
+      android.app.NotificationManager manager =
+          app.getSystemService(android.app.NotificationManager.class);
+      if (manager != null)
+        manager.cancel(NOTIFICATION_ID);
     }
     prefs().edit()
         .putString("access", access)
@@ -347,6 +365,37 @@ final class DiscordPresence {
     status = value;
     if (value == STATUS_READY && app != null) apply(app);
     changed();
+  }
+
+  /** Like the update notification: tapping it opens Settings > Integrations > Discord. */
+  private static void notifySignInExpired(Context base) {
+    android.app.NotificationManager manager =
+        base.getSystemService(android.app.NotificationManager.class);
+    if (manager == null)
+      return;
+    Context context = L10n.wrap(base);
+    manager.createNotificationChannel(new android.app.NotificationChannel(
+        CHANNEL, "Discord", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+    Intent open = new Intent(context, MainActivity.class)
+                      .putExtra(EXTRA_SHOW_DISCORD, true)
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+    android.app.PendingIntent tap = android.app.PendingIntent.getActivity(context, 1, open,
+        android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+    android.app.Notification notification =
+        new android.app.Notification.Builder(context, CHANNEL)
+            .setSmallIcon(context.getResources().getIdentifier(
+                "ic_emugo_mark", "drawable", context.getPackageName()))
+            .setContentTitle(context.getString(R.string.discord_reauth_title))
+            .setContentText(context.getString(R.string.discord_reauth_text))
+            .setStyle(new android.app.Notification.BigTextStyle().bigText(
+                context.getString(R.string.discord_reauth_text)))
+            .setContentIntent(tap)
+            .setAutoCancel(true)
+            .build();
+    try {
+      manager.notify(NOTIFICATION_ID, notification);
+    } catch (SecurityException ignored) {
+    }
   }
 
   /** Discord accepts 2 to 128 characters for activity text. */

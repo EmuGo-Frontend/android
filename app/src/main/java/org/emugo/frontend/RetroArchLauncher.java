@@ -15,33 +15,56 @@ import android.os.Looper;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Optional launch path for systems normally hosted by EmuGo's Libretro runner. */
+/**
+ * Opens games in RetroArch: when "Use RetroArch" is on, and as the fallback when the built-in
+ * core fails, no standalone emulator is installed or EmuGo! has no emulator for the system.
+ */
 final class RetroArchLauncher {
   private static final String[] PACKAGES = {"com.retroarch.aarch64", "com.retroarch"};
   private static final String ACTIVITY =
       "com.retroarch.browser.retroactivity.RetroActivityFuture";
 
-  static void launch(Activity activity, Library.Game game) {
-    PackageManager manager = activity.getPackageManager();
-    ApplicationInfo retroArch = null;
+  private static ApplicationInfo find(PackageManager manager) {
     for (String name : PACKAGES) {
       try {
-        retroArch = manager.getApplicationInfo(name, 0);
-        break;
+        return manager.getApplicationInfo(name, 0);
       } catch (PackageManager.NameNotFoundException ignored) {
       }
     }
-    if (retroArch == null) {
+    return null;
+  }
+
+  /** True when RetroArch is installed and has a core for this game's system. */
+  static boolean canRun(Context context, Library.Game game) {
+    return game.system.retroArch != null && find(context.getPackageManager()) != null;
+  }
+
+  static void launch(Activity activity, Library.Game game) {
+    launch(activity, game, null);
+  }
+
+  /** done runs once the game was handed to RetroArch or the user closed the message. */
+  static void launch(Activity activity, Library.Game game, Runnable done) {
+    Runnable finished = () -> {
+      if (done != null)
+        done.run();
+    };
+    PackageManager manager = activity.getPackageManager();
+    ApplicationInfo retroArch = find(manager);
+    if (retroArch == null || game.system.retroArch == null) {
       new PocketDialog.Builder(activity)
           .setTitle("RetroArch")
-          .setMessage(R.string.install_retroarch_to_use_this_option)
-          .setPositiveButton(R.string.close, null)
+          .setMessage(retroArch == null
+                  ? activity.getString(R.string.install_retroarch_to_use_this_option)
+                  : activity.getString(R.string.no_compatible_x_app_was_found, game.system.name))
+          .setPositiveButton(R.string.close, (d, w) -> finished.run())
+          .setOnCancelListener(d -> finished.run())
           .show();
       return;
     }
 
     ApplicationInfo installed = retroArch;
-    String coreName = game.system.core;
+    String coreName = game.system.retroArch;
     AtomicBoolean completed = new AtomicBoolean(false);
     BroadcastReceiver receiver = new BroadcastReceiver() {
       @Override
@@ -51,6 +74,7 @@ final class RetroArchLauncher {
         String[] cores = response.getStringArrayExtra("CORES");
         if (cores != null && Arrays.asList(cores).contains(coreName)) {
           startGame(activity, installed, game);
+          finished.run();
         } else {
           new PocketDialog.Builder(activity)
               .setTitle(R.string.retroarch_core_missing)
@@ -60,8 +84,10 @@ final class RetroArchLauncher {
                     Intent open = manager.getLaunchIntentForPackage(installed.packageName);
                     if (open != null)
                       activity.startActivity(open);
+                    finished.run();
                   })
-              .setNegativeButton(R.string.close, null)
+              .setNegativeButton(R.string.close, (dialog, which) -> finished.run())
+              .setOnCancelListener(dialog -> finished.run())
               .show();
         }
       }
@@ -75,6 +101,7 @@ final class RetroArchLauncher {
       if (completed.compareAndSet(false, true)) {
         activity.unregisterReceiver(receiver);
         startGame(activity, installed, game);
+        finished.run();
       }
     }, 1200);
     activity.sendBroadcast(new Intent("com.retroarch.QUERY_INSTALLED_CORES")
@@ -82,7 +109,7 @@ final class RetroArchLauncher {
   }
 
   private static void startGame(Activity activity, ApplicationInfo retroArch, Library.Game game) {
-    String coreFile = game.system.core + "_libretro_android.so";
+    String coreFile = game.system.retroArch + "_libretro_android.so";
     String corePath = retroArch.dataDir + "/cores/" + coreFile;
     Intent intent = new Intent(Intent.ACTION_MAIN)
         .setComponent(new ComponentName(retroArch.packageName, ACTIVITY))

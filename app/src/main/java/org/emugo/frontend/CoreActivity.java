@@ -81,13 +81,13 @@ public final class CoreActivity extends Activity {
     getWindow().getDecorView().setSystemUiVisibility(5894 | 1024 | 512);
     library = new Library(this);
     Brightness.apply(this, getWindow());
-    autoStates = library.get("autoStates", false);
     gameTitle = getIntent().getStringExtra("title");
     fileTitle = getIntent().getStringExtra("fileTitle");
     if (fileTitle == null) fileTitle = gameTitle;
     system = getIntent().getStringExtra("system");
     analogSystem = "n64".equals(system);
     saveStem = getIntent().getStringExtra("saveStem");
+    autoStates = library.autoStates(Library.gameKey(system, saveStem));
     String combo = library.get("menuCombo", "Start + Select");
     firstKey =
         combo.equals("L3 + R3") ? KeyEvent.KEYCODE_BUTTON_THUMBL : KeyEvent.KEYCODE_BUTTON_SELECT;
@@ -116,7 +116,12 @@ public final class CoreActivity extends Activity {
       work.mkdirs();
       if (!autoStates) new File(work, "state.sav").delete();
       restoreSave();
-      File core = downloadCore(coreName);
+      File core;
+      try {
+        core = downloadCore(coreName);
+      } catch (IOException e) {
+        throw new CoreFailure(e.getMessage());
+      }
       File rom = "psx".equals(system) ? linkDisc(Uri.parse(raw))
                                       : new File(work, "game" + extension(Uri.parse(raw)));
       if (!"psx".equals(system)) try (InputStream in = getContentResolver().openInputStream(Uri.parse(raw));
@@ -158,7 +163,7 @@ public final class CoreActivity extends Activity {
           nativeRun(this, core.getAbsolutePath(), rom.getAbsolutePath(), work.getAbsolutePath(),
               autoStates);
       if (!error.isEmpty())
-        throw new IOException(error);
+        throw new CoreFailure(error);
       saveSync.shutdown();
       try {
         saveSync.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS);
@@ -167,6 +172,12 @@ public final class CoreActivity extends Activity {
       syncSave(true);
       main.post(this::finish);
     } catch (Exception e) {
+      Library.Game game = currentGame();
+      if (e instanceof CoreFailure && game != null && RetroArchLauncher.canRun(this, game)) {
+        // The built-in core is unavailable or broken; RetroArch takes over without asking.
+        main.post(() -> RetroArchLauncher.launch(this, game, this::finish));
+        return;
+      }
       String message = e.getMessage();
       main.post(()
                     -> new PocketDialog.Builder(this)
@@ -255,6 +266,19 @@ public final class CoreActivity extends Activity {
       link(new File(disc, track), match.uri);
     }
     return target;
+  }
+  /** The built-in core could not be downloaded or loaded, or it rejected the game. */
+  private static final class CoreFailure extends IOException {
+    CoreFailure(String message) {
+      super(message);
+    }
+  }
+  private Library.Game currentGame() {
+    Library.SystemInfo info = Library.system(system);
+    String raw = getIntent().getStringExtra("uri");
+    return info == null || raw == null
+        ? null
+        : new Library.Game(info, gameTitle, fileTitle, saveStem, Uri.parse(raw));
   }
   private void link(File target, Uri uri) throws IOException {
     try (ParcelFileDescriptor descriptor = getContentResolver().openFileDescriptor(uri, "r")) {
@@ -636,9 +660,24 @@ public final class CoreActivity extends Activity {
           if (w == 0)
             showDisplayModesMenu();
           if (w == 1)
-            showBooleanMenu(
-                getString(R.string.automatic_states), "autoStates", false, this::showEmulationMenu);
+            showAutoStatesMenu();
         });
+  }
+  /** Default follows Settings > Emulation; On and Off apply to this game only. */
+  private void showAutoStatesMenu() {
+    pauseBack = this::showEmulationMenu;
+    String key = Library.gameKey(system, saveStem);
+    Boolean override = library.autoStatesOverride(key);
+    String fallback = getString(library.get("autoStates", false) ? R.string.on : R.string.off);
+    String[] options = {
+        getString(R.string.default_x, fallback), getString(R.string.on), getString(R.string.off)};
+    int selected = override == null ? 0 : override ? 1 : 2;
+    pauseMenu.replacePage(getString(R.string.automatic_states), options, selected, (d, w) -> {
+      library.setAutoStatesOverride(key, w == 0 ? null : Boolean.valueOf(w == 1));
+      autoStates = library.autoStates(key);
+      nativeAutoStates(autoStates);
+      showEmulationMenu();
+    });
   }
   private void showDisplayModesMenu() {
     pauseBack = this::showEmulationMenu;
@@ -669,12 +708,7 @@ public final class CoreActivity extends Activity {
         library.get(key, defaultValue) ? 1 : 0, (d, w) -> {
           boolean enabled = w == 1;
           library.put(key, enabled);
-          if (key.equals("autoStates")) {
-            autoStates = enabled;
-            nativeAutoStates(enabled);
-          } else {
-            frame.refreshFilters();
-          }
+          frame.refreshFilters();
           parentMenu.run();
         });
   }

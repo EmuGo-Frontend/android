@@ -29,13 +29,21 @@ import org.json.JSONObject;
 
 final class Library {
   static final class SystemInfo {
-    final String name, folder, core, external;
+    /**
+     * core runs inside EmuGo!, external names a standalone app, retroArch is the Libretro core
+     * RetroArch uses when neither is available. A system with only retroArch always opens there.
+     */
+    final String name, folder, core, external, retroArch;
     final String[] extensions;
     SystemInfo(String n, String f, String c, String e, String x) {
+      this(n, f, c, e, c, x);
+    }
+    SystemInfo(String n, String f, String c, String e, String r, String x) {
       name = n;
       folder = f;
       core = c;
       external = e;
+      retroArch = r;
       extensions = x.split(",");
     }
   }
@@ -50,12 +58,12 @@ final class Library {
       new SystemInfo("Sega Master System", "mastersystem", "genesis_plus_gx", null, "sms,zip"),
       new SystemInfo("Sega Game Gear", "gamegear", "genesis_plus_gx", null, "gg,zip"),
       new SystemInfo("PlayStation", "psx", "pcsx_rearmed", null, "chd,cue,pbp,iso,bin"),
-      new SystemInfo("PlayStation Portable", "psp", null, "ppsspp", "iso,cso,chd,pbp"),
-      new SystemInfo("PlayStation 2", "ps2", null, "nethersx2", "iso,chd,cso,bin"),
-      new SystemInfo("GameCube", "gc", null, "dolphin", "iso,rvz,gcm,ciso"),
-      new SystemInfo("Wii", "wii", null, "dolphin", "iso,rvz,wbfs"),
-      new SystemInfo("Nintendo DS", "nds", null, "melonds", "nds,dsi,zip,7z"),
-      new SystemInfo("Nintendo 3DS", "3ds", null, "azahar", "3ds,cci,cxi,cia"),
+      new SystemInfo("PlayStation Portable", "psp", null, "ppsspp", "ppsspp", "iso,cso,chd,pbp"),
+      new SystemInfo("PlayStation 2", "ps2", null, "nethersx2", "play", "iso,chd,cso,bin"),
+      new SystemInfo("GameCube", "gc", null, "dolphin", "dolphin", "iso,rvz,gcm,ciso"),
+      new SystemInfo("Wii", "wii", null, "dolphin", "dolphin", "iso,rvz,wbfs"),
+      new SystemInfo("Nintendo DS", "nds", null, "melonds", "melondsds", "nds,dsi,zip,7z"),
+      new SystemInfo("Nintendo 3DS", "3ds", null, "azahar", "citra", "3ds,cci,cxi,cia"),
       new SystemInfo("Nintendo Switch", "switch", null, "eden", "nsp,xci"),
   };
   static final class Game {
@@ -156,7 +164,49 @@ final class Library {
   }
   /** Favourites are stored in the synced settings as "system folder/ROM file stem" lines. */
   static String favouriteKey(Game game) {
-    return game.system.folder + "/" + game.saveStem;
+    return gameKey(game.system.folder, game.saveStem);
+  }
+  /** Identifies a game across devices: "system folder/ROM file stem". */
+  static String gameKey(String system, String saveStem) {
+    return system + "/" + saveStem;
+  }
+  static SystemInfo system(String folder) {
+    for (SystemInfo system : SYSTEMS)
+      if (system.folder.equals(folder))
+        return system;
+    return null;
+  }
+  // Per-game automatic states, synced in settings.json as {"gameKey": true|false}. A game without
+  // an entry follows the global "autoStates" setting.
+  private static final String STATE_OVERRIDES = "autoStatesOverrides";
+  synchronized Boolean autoStatesOverride(String gameKey) {
+    JSONObject overrides = settings.optJSONObject(STATE_OVERRIDES);
+    return overrides == null || !overrides.has(gameKey) ? null : overrides.optBoolean(gameKey);
+  }
+  boolean autoStates(String gameKey) {
+    Boolean override = autoStatesOverride(gameKey);
+    return override != null ? override : get("autoStates", false);
+  }
+  /** null removes the override, so the game follows the global setting again. */
+  synchronized void setAutoStatesOverride(String gameKey, Boolean value) {
+    JSONObject overrides = settings.optJSONObject(STATE_OVERRIDES);
+    if (overrides == null)
+      overrides = new JSONObject();
+    try {
+      if (value == null)
+        overrides.remove(gameKey);
+      else
+        overrides.put(gameKey, value.booleanValue());
+    } catch (Exception ignored) {
+    }
+    put(STATE_OVERRIDES, overrides);
+  }
+  synchronized int autoStatesOverrideCount() {
+    JSONObject overrides = settings.optJSONObject(STATE_OVERRIDES);
+    return overrides == null ? 0 : overrides.length();
+  }
+  synchronized void clearAutoStatesOverrides() {
+    put(STATE_OVERRIDES, new JSONObject());
   }
   synchronized Set<String> favourites() {
     Set<String> out = new java.util.LinkedHashSet<>();

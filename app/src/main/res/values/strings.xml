@@ -275,4 +275,15 @@
     <string name="favourites_empty_hint">Press X on a game to add it to your favourites</string>
     <string name="added_x_to_favourites">Added %s to favourites</string>
     <string name="removed_x_from_favourites">Removed %s from favourites</string>
+    <string name="default_x">Default (%s)</string>
+    <plurals name="reset_game_overrides_n">
+        <item quantity="one">Reset %d per-game setting</item>
+        <item quantity="other">Reset %d per-game settings</item>
+    </plurals>
+    <string name="reset_game_overrides_question">Reset all per-game settings?</string>
+    <string name="reset_game_overrides_message">Every game goes back to the default for automatic states (%s).</string>
+    <string name="reset">Reset</string>
+    <string name="game_overrides_reset">Per-game settings reset</string>
+    <string name="discord_reauth_title">Sign in to Discord again</string>
+    <string name="discord_reauth_text">Your Discord sign-in has expired. Tap to sign in again so your games show on your profile.</string>
 </resources>

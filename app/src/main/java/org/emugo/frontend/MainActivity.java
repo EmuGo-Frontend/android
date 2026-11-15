@@ -183,11 +183,20 @@ public class MainActivity extends Activity {
     setIntent(intent);
     handleUpdateIntent(intent);
   }
-  /** Tapping the update notification opens the changelog and installer. */
+  /**
+   * Tapping the update notification opens the changelog and installer; the Discord one opens
+   * its sign-in page.
+   */
   private void handleUpdateIntent(Intent intent) {
     if (intent != null && intent.getBooleanExtra(UpdateChecker.EXTRA_SHOW_UPDATE, false)) {
       intent.removeExtra(UpdateChecker.EXTRA_SHOW_UPDATE);
       UpdateChecker.check(this, true);
+    }
+    // The Discord sign-in expired: show the page with "Sign in with Discord".
+    if (intent != null && intent.getBooleanExtra(DiscordPresence.EXTRA_SHOW_DISCORD, false)) {
+      intent.removeExtra(DiscordPresence.EXTRA_SHOW_DISCORD);
+      focusedPositions.remove(Screen.DISCORD);
+      discordSettings();
     }
   }
   @Override
@@ -825,8 +834,28 @@ public class MainActivity extends Activity {
     title(R.string.emulation);
     row(R.string.display_modes, "", this::displayModes);
     booleanOption(R.string.automatic_states, "autoStates", false);
+    int overrides = library.autoStatesOverrideCount();
+    if (overrides > 0)
+      row(getResources().getQuantityString(R.plurals.reset_game_overrides_n, overrides, overrides),
+          "", this::resetGameOverrides);
     booleanOption(R.string.boot_intros, "bootIntros", true);
     booleanOption(R.string.use_retroarch, "useRetroArch", false);
+  }
+  /** Games set from the pause menu go back to the global automatic states setting. */
+  private void resetGameOverrides() {
+    new PocketDialog.Builder(this)
+        .setTitle(R.string.reset_game_overrides_question)
+        .setMessage(getString(
+            R.string.reset_game_overrides_message, onOff(library.get("autoStates", false))))
+        .setPositiveButton(R.string.reset,
+            (d, w) -> {
+              library.clearAutoStatesOverrides();
+              PocketNotice.show(this, R.string.game_overrides_reset);
+              focusedPositions.remove(Screen.EMULATION);
+              emulationSettings();
+            })
+        .setNegativeButton(R.string.cancel, null)
+        .show();
   }
   private void displayModes() {
     screen = Screen.DISPLAY_MODES;
@@ -2019,7 +2048,8 @@ public class MainActivity extends Activity {
       ExternalEmulators.launch(this, library, game);
       return;
     }
-    if (library.get("useRetroArch", false)) {
+    // Systems without a built-in core always go to RetroArch.
+    if (game.system.core == null || library.get("useRetroArch", false)) {
       RetroArchLauncher.launch(this, game);
       return;
     }

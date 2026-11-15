@@ -60,6 +60,10 @@ final class ExternalEmulators {
         }
       }
     }
+    if (pkg == null && RetroArchLauncher.canRun(activity, game)) {
+      RetroArchLauncher.launch(activity, game);
+      return;
+    }
     if (pkg == null) {
       new PocketDialog.Builder(activity)
           .setMessage(activity.getString(R.string.no_compatible_x_app_was_found, key))
