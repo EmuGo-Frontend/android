@@ -1,0 +1,40 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.emugo.frontend">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <queries>
+        <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent>
+        <package android:name="org.dolphinemu.dolphinemu" />
+        <package android:name="org.dolphinemu.dolphinemu.mmjr" />
+        <package android:name="org.citra.citra_emu" />
+        <package android:name="io.github.lime3ds.android" />
+        <package android:name="org.azahar_emu.azahar" />
+        <package android:name="org.ppsspp.ppsspp" />
+        <package android:name="org.ppsspp.ppssppgold" />
+        <package android:name="me.magnum.melonds" />
+        <package android:name="me.magnum.melonds.nightly" />
+        <package android:name="xyz.aethersx2.android" />
+        <package android:name="xyz.nethersx2.android" />
+        <package android:name="com.retroarch.aarch64" />
+        <package android:name="com.retroarch" />
+        <package android:name="dev.eden.eden_emulator" />
+        <package android:name="org.eden.eden_emulator" />
+        <package android:name="org.yuzu.yuzu_emu" />
+        <package android:name="com.discord" />
+        <package android:name="com.github.catfriend1.syncthingandroid" />
+        <intent><action android:name="com.discord.socialsdk.rpc.IDiscordRpcService" /></intent>
+        <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
+    </queries>
+    <application android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:localeConfig="@xml/locale_config" android:theme="@android:style/Theme.Material.NoActionBar" android:usesCleartextTraffic="false">
+        <service android:name=".NotificationService" android:label="@string/notification_service_name" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true">
+            <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+        </service>
+        <activity android:name=".CoreActivity" android:screenOrientation="unspecified" android:exported="false" />
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="uiMode|screenSize|orientation|density">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.HOME"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>
+        </activity>
+    </application>
+</manifest>

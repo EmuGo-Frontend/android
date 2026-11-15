@@ -1,0 +1,39 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'org.emugo.frontend'
+    compileSdk 36
+    ndkVersion '28.2.13676358'
+    defaultConfig {
+        applicationId 'org.emugo.frontend'
+        minSdk 29
+        targetSdk 35
+        versionCode 100
+        versionName '1.0.0'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+    signingConfigs {
+        release {
+            // Credentials come from the environment so nothing secret lives in the repository.
+            storeFile System.getenv('SIGNING_KEYSTORE') ? file(System.getenv('SIGNING_KEYSTORE')) : null
+            storePassword System.getenv('SIGNING_STORE_PASSWORD')
+            keyAlias System.getenv('SIGNING_KEY_ALIAS') ?: 'upload'
+            keyPassword System.getenv('SIGNING_KEY_PASSWORD') ?: System.getenv('SIGNING_STORE_PASSWORD')
+        }
+    }
+    buildTypes {
+        release {
+            if (System.getenv('SIGNING_KEYSTORE')) signingConfig signingConfigs.release
+        }
+    }
+    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt' } }
+    buildFeatures { buildConfig true }
+}
+dependencies {
+    if (file('../.local-sdk/discord_partner_sdk.aar').exists()) implementation files('../.local-sdk/discord_partner_sdk.aar')
+}

@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">EmuGo!</string>
+    <string name="notification_service_name">EmuGo! notification center</string>
+</resources>

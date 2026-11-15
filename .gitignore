@@ -1,0 +1,23 @@
+# Build output
+.gradle/
+.gradle-user/
+**/build/
+**/.cxx/
+*.apk
+*.apk.idsig
+*.aab
+
+# Local SDKs and machine-specific paths
+.local-sdk/
+local.properties
+.idea/
+
+# Signing material and secrets: never commit these
+*.jks
+*.keystore
+*.p12
+*.pem
+keystore.properties
+signing.properties
+*.env
+.env*
