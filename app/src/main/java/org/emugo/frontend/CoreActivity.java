@@ -1121,6 +1121,8 @@ public final class CoreActivity extends Activity {
     private final boolean gameBoyColor = "gbc".equals(system);
     private final boolean superNintendo = "snes".equals(system);
     private final boolean fourByThree = "psx".equals(system) || "n64".equals(system);
+    /** Drawn with square pixels like the GBA instead of the core's 4:3. */
+    private final boolean genesis = "genesis".equals(system);
     private boolean lcdBlend;
     private boolean filter;
     private boolean green;
@@ -1205,7 +1207,7 @@ public final class CoreActivity extends Activity {
       if (bitmap != null) {
         if (!gameBoy && !gameBoyColor) {
           float aspect = superNintendo || fourByThree ? 4f / 3f
-              : coreAspect > 0                        ? coreAspect
+              : coreAspect > 0 && !genesis            ? coreAspect
                                : bitmap.getWidth() / (float) bitmap.getHeight();
           float width = Math.min(getWidth(), getHeight() * aspect);
           float height = width / aspect;
