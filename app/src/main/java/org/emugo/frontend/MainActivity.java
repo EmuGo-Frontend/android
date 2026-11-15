@@ -22,6 +22,7 @@ public class MainActivity extends Activity {
     HOME,
     SYSTEMS,
     GAMES,
+    FAVOURITES,
     SETTINGS,
     APPEARANCE,
     EMULATION,
@@ -298,6 +299,8 @@ public class MainActivity extends Activity {
         : layout.equals("Nintendo") ? "ZL/ZR" : "LT/RT", "Jump");
     if (screen == Screen.INFOCENTER)
       controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", "Clear");
+    if (screen == Screen.GAMES || screen == Screen.FAVOURITES)
+      controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", "Favourite");
     if (screen == Screen.RA_PROFILE || screen == Screen.RA_GAME) {
       controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", "Reload");
       controlHint(layout.equals("PlayStation") ? "OPTIONS" : "START", "Play");
@@ -430,7 +433,17 @@ public class MainActivity extends Activity {
       iconParams.rightMargin = dp(9);
       card.addView(backIcon, iconParams);
     }
-    TextView n = text(name.startsWith("← ") ? name.substring(2) : name, 17, false);
+    boolean heart = name.startsWith(HEART);
+    if (heart) {
+      ImageView heartIcon = new ImageView(this);
+      heartIcon.setImageResource(
+          getResources().getIdentifier("tabler_heart_filled", "drawable", getPackageName()));
+      heartIcon.setContentDescription(L10n.text(this, "Favourite"));
+      LinearLayout.LayoutParams heartParams = new LinearLayout.LayoutParams(dp(16), dp(16));
+      heartParams.rightMargin = dp(9);
+      card.addView(heartIcon, heartParams); // stays pink, also on the selection pill
+    }
+    TextView n = text(name.startsWith("← ") || heart ? name.substring(2) : name, 17, false);
     n.setSingleLine(true);
     n.setEllipsize(android.text.TextUtils.TruncateAt.END);
     card.addView(n);
@@ -561,7 +574,45 @@ public class MainActivity extends Activity {
     if (systems.isEmpty())
       row(library.isScanning() && !library.hasIndex() ? "Scanning ROMs" : "No systems found", "",
           this::pickRoms);
+    if (!library.favouriteGames().isEmpty()) row("Favourites", "", this::favourites);
     for (Library.SystemInfo s : systems) row(s.name, "", () -> showSystem(s));
+  }
+  private final Map<View, Library.Game> gameRows = new HashMap<>();
+  // Row prefix that row() turns into a pink heart icon.
+  private static final String HEART = "\u2665 ";
+  private void favourites() {
+    screen = Screen.FAVOURITES;
+    body.removeAllViews();
+    gameRows.clear();
+    title("Favourites", "");
+    List<Library.Game> games = library.favouriteGames();
+    if (games.isEmpty()) {
+      message("Press X on a game to add it to your favourites");
+      return;
+    }
+    for (Library.Game game : games)
+      gameRows.put(richRow(new RichRow.Entry(game.title, game.system.name, null, null, false),
+                       () -> launch(game)),
+          game);
+  }
+  /** X / Square: adds or removes the focused game; the list keeps its place. */
+  private void toggleFocusedFavourite() {
+    View focused = body.findFocus();
+    Library.Game game = focused == null ? null : gameRows.get(focused);
+    if (game == null) return;
+    rememberSelection(focused);
+    int previousScroll = scroll.getScrollY();
+    boolean added = library.toggleFavourite(game);
+    PocketNotice.show(this, L10n.format(this,
+        added ? "Added %s to favourites" : "Removed %s from favourites", game.title));
+    if (screen == Screen.FAVOURITES) {
+      favourites();
+      restoreSelection(Screen.FAVOURITES);
+    } else if (selected != null) {
+      renderGamePage(selected);
+      restoreSelection(Screen.GAMES, false);
+      restoreScroll(previousScroll);
+    }
   }
   private void showSystem(Library.SystemInfo s) {
     gamePage = 0;
@@ -575,10 +626,13 @@ public class MainActivity extends Activity {
     int pages = Math.max(1, (games.size() + GAMES_PER_PAGE - 1) / GAMES_PER_PAGE);
     gamePage = Math.min(gamePage, pages - 1);
     title(s.name, "");
+    gameRows.clear();
+    java.util.Set<String> favourites = library.favourites();
     int end = Math.min(games.size(), (gamePage + 1) * GAMES_PER_PAGE);
     for (int index = gamePage * GAMES_PER_PAGE; index < end; index++) {
       Library.Game game = games.get(index);
-      row(game.title, "", () -> launch(game));
+      boolean favourite = favourites.contains(Library.favouriteKey(game));
+      gameRows.put(row((favourite ? HEART : "") + game.title, "", () -> launch(game)), game);
     }
     if (pages > 1) {
       if (gamePage > 0)
@@ -1906,6 +1960,12 @@ public class MainActivity extends Activity {
         playRetroAchievementsGame();
       return true;
     }
+    if (key == KeyEvent.KEYCODE_BUTTON_X && !firstHeld
+        && (screen == Screen.GAMES || screen == Screen.FAVOURITES)) {
+      if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
+        toggleFocusedFavourite();
+      return true;
+    }
     if (key == KeyEvent.KEYCODE_BUTTON_X && !firstHeld && screen == Screen.INFOCENTER) {
       if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
         dismissFocusedNotification();
@@ -1963,6 +2023,7 @@ public class MainActivity extends Activity {
     Screen previous = screen;
     switch (screen) {
       case GAMES:
+      case FAVOURITES:
         systems();
         break;
       case SYSTEMS:
@@ -2032,6 +2093,9 @@ public class MainActivity extends Activity {
         break;
       case SYSTEMS:
         systems();
+        break;
+      case FAVOURITES:
+        favourites();
         break;
       case GAMES:
         if (selected != null)

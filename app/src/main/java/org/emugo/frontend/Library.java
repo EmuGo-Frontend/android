@@ -154,6 +154,39 @@ final class Library {
     } catch (Exception ignored) {
     }
   }
+  /** Favourites are stored in the synced settings as "system folder/ROM file stem" lines. */
+  static String favouriteKey(Game game) {
+    return game.system.folder + "/" + game.saveStem;
+  }
+  synchronized Set<String> favourites() {
+    Set<String> out = new java.util.LinkedHashSet<>();
+    for (String line : get("favourites", "").split("\n"))
+      if (!line.trim().isEmpty()) out.add(line.trim());
+    return out;
+  }
+  boolean isFavourite(Game game) {
+    return favourites().contains(favouriteKey(game));
+  }
+  /** Returns true when the game is a favourite afterwards. */
+  synchronized boolean toggleFavourite(Game game) {
+    Set<String> set = favourites();
+    String key = favouriteKey(game);
+    boolean added = set.add(key);
+    if (!added) set.remove(key);
+    put("favourites", String.join("\n", set));
+    return added;
+  }
+  /** All favourite games that are in the library right now, sorted by title. */
+  List<Game> favouriteGames() {
+    Set<String> set = favourites();
+    List<Game> out = new ArrayList<>();
+    if (set.isEmpty()) return out;
+    for (SystemInfo system : visibleSystems())
+      for (Game game : games(system))
+        if (set.contains(favouriteKey(game))) out.add(game);
+    out.sort((a, b) -> a.title.compareToIgnoreCase(b.title));
+    return out;
+  }
   String get(String key, String fallback) {
     return settings.optString(key, fallback);
   }

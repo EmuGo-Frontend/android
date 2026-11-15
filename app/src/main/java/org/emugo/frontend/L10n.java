@@ -337,6 +337,13 @@ final class L10n {
     add("GitHub is limiting update checks right now. Try again in %d minutes.",
         "GitHub begrenzt Update-Prüfungen gerade. Versuche es in %d Minuten erneut.");
     add("The changelog is on the release page: %s", "Die Änderungen stehen auf der Release-Seite: %s");
+    // Favourites.
+    add("Favourites", "Favoriten");
+    add("Favourite", "Favorit");
+    add("Press X on a game to add it to your favourites",
+        "Drücke X bei einem Spiel, um es zu deinen Favoriten hinzuzufügen");
+    add("Added %s to favourites", "%s zu den Favoriten hinzugefügt");
+    add("Removed %s from favourites", "%s aus den Favoriten entfernt");
   }
 
   private L10n() {}
