@@ -139,8 +139,10 @@ final class Library {
           .core("snes9x")
           .achievements(3)
           .aliases("sfc"),
+      // Software rendering: OpenGL ES cores crashed on the Air X. RetroArch runs Mupen64Plus-Next.
       new SystemInfo("Nintendo 64", "n64", "n64,z64,v64,zip")
-          .core("mupen64plus_next_gles3")
+          .core("parallel_n64")
+          .retroArch("mupen64plus_next_gles3")
           .apps("mupen64plusfz")
           .achievements(2),
       new SystemInfo("Nintendo DS", "nds", "nds,dsi,zip")
@@ -182,19 +184,13 @@ final class Library {
               "bios_CD_J.bin"),
       new SystemInfo("Sega 32X", "sega32x", "32x,zip").core("picodrive").achievements(10),
       new SystemInfo("Sega Saturn", "saturn", "chd,cue,iso,ccd,mds")
-          .core("yabasanshiro")
           .apps("yabasanshiro")
-          .achievements(39)
-          .media(Media.LINK)
-          .bios("saturn_bios.bin", "saturn_bios.bin")
-          .ownSaves(),
+          .retroArch("yabasanshiro")
+          .achievements(39),
       new SystemInfo("Sega Dreamcast", "dreamcast", "chd,gdi,cdi,cue")
-          .core("flycast")
           .apps("redream", "flycast")
-          .achievements(40)
-          .media(Media.LINK)
-          .bios("dc_boot.bin", "dc/dc_boot.bin", "dc_flash.bin", "dc/dc_flash.bin")
-          .ownSaves(),
+          .retroArch("flycast")
+          .achievements(40),
       new SystemInfo("PC Engine", "pcengine", "pce,zip")
           .core("mednafen_pce_fast")
           .achievements(8)
@@ -257,12 +253,9 @@ final class Library {
           .media(Media.LINK)
           .aliases("ps1"),
       new SystemInfo("PlayStation Portable", "psp", "iso,cso,chd,pbp")
-          .core("ppsspp")
           .apps("ppsspp")
-          .achievements(41)
-          .media(Media.LINK)
-          .assets("PPSSPP")
-          .ownSaves(),
+          .retroArch("ppsspp")
+          .achievements(41),
       new SystemInfo("PlayStation 2", "ps2", "iso,chd,cso,bin")
           .apps("nethersx2")
           .retroArch("play")

@@ -1,11 +1,7 @@
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-#include <GLES3/gl3.h>
 #include <android/log.h>
 #include <dlfcn.h>
 #include <jni.h>
 
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdarg>
@@ -56,113 +52,6 @@ static void RETRO_CALLCONV coreLog(enum retro_log_level level, const char* forma
                                            : ANDROID_LOG_DEBUG;
   __android_log_vprint(priority, "EmuGo-core", format, args);
   va_end(args);
-}
-// Hardware rendering: cores that draw with OpenGL ES (N64, Dreamcast, PSP, Saturn) render into an
-// offscreen framebuffer on the core thread. Each finished frame is read back and shown through
-// the same path as software frames, so scaling, screenshots and the pause menu work unchanged.
-static retro_hw_render_callback hw{};
-static bool hwRequested = false;
-static EGLDisplay eglDisplay = EGL_NO_DISPLAY;
-static EGLContext eglContext = EGL_NO_CONTEXT;
-static EGLSurface eglSurface = EGL_NO_SURFACE;
-static GLuint fbo = 0, fboColor = 0, fboDepth = 0;
-static unsigned fboWidth = 0, fboHeight = 0;
-static void* glesLibrary = nullptr;
-static std::vector<uint32_t> readback;
-
-static uintptr_t RETRO_CALLCONV currentFramebuffer() { return fbo; }
-static retro_proc_address_t RETRO_CALLCONV procAddress(const char* name) {
-  if (!glesLibrary) glesLibrary = dlopen("libGLESv3.so", RTLD_NOW | RTLD_LOCAL);
-  if (!glesLibrary) glesLibrary = dlopen("libGLESv2.so", RTLD_NOW | RTLD_LOCAL);
-  void* function = glesLibrary ? dlsym(glesLibrary, name) : nullptr;
-  if (!function) function = (void*)eglGetProcAddress(name);
-  return (retro_proc_address_t)function;
-}
-static void deleteFramebuffer() {
-  if (fbo) glDeleteFramebuffers(1, &fbo);
-  if (fboColor) glDeleteTextures(1, &fboColor);
-  if (fboDepth) glDeleteRenderbuffers(1, &fboDepth);
-  fbo = fboColor = fboDepth = 0;
-  fboWidth = fboHeight = 0;
-}
-static bool createFramebuffer(unsigned width, unsigned height) {
-  deleteFramebuffer();
-  glGenTextures(1, &fboColor);
-  glBindTexture(GL_TEXTURE_2D, fboColor);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glGenFramebuffers(1, &fbo);
-  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fboColor, 0);
-  if (hw.depth) {
-    glGenRenderbuffers(1, &fboDepth);
-    glBindRenderbuffer(GL_RENDERBUFFER, fboDepth);
-    glRenderbufferStorage(GL_RENDERBUFFER, hw.stencil ? GL_DEPTH24_STENCIL8 : GL_DEPTH_COMPONENT24,
-                          width, height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, fboDepth);
-    if (hw.stencil)
-      glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fboDepth);
-  }
-  bool complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
-  glClearColor(0, 0, 0, 1);
-  glClear(GL_COLOR_BUFFER_BIT);
-  fboWidth = width;
-  fboHeight = height;
-  return complete;
-}
-static void destroyContext() {
-  if (eglDisplay == EGL_NO_DISPLAY) return;
-  if (eglContext != EGL_NO_CONTEXT) deleteFramebuffer();
-  eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-  if (eglContext != EGL_NO_CONTEXT) eglDestroyContext(eglDisplay, eglContext);
-  if (eglSurface != EGL_NO_SURFACE) eglDestroySurface(eglDisplay, eglSurface);
-  eglContext = EGL_NO_CONTEXT;
-  eglSurface = EGL_NO_SURFACE;
-  eglDisplay = EGL_NO_DISPLAY;
-}
-// An OpenGL ES 3 context (ES 2 as a fallback) current on the core thread, drawing offscreen.
-static bool createContext(unsigned width, unsigned height) {
-  eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-  if (eglDisplay == EGL_NO_DISPLAY || !eglInitialize(eglDisplay, nullptr, nullptr)) {
-    eglDisplay = EGL_NO_DISPLAY;
-    return false;
-  }
-  for (int version : {3, 2}) {
-    const EGLint configAttributes[] = {EGL_RENDERABLE_TYPE,
-                                       version == 3 ? EGL_OPENGL_ES3_BIT_KHR : EGL_OPENGL_ES2_BIT,
-                                       EGL_SURFACE_TYPE,
-                                       EGL_PBUFFER_BIT,
-                                       EGL_RED_SIZE,
-                                       8,
-                                       EGL_GREEN_SIZE,
-                                       8,
-                                       EGL_BLUE_SIZE,
-                                       8,
-                                       EGL_ALPHA_SIZE,
-                                       8,
-                                       EGL_DEPTH_SIZE,
-                                       24,
-                                       EGL_STENCIL_SIZE,
-                                       8,
-                                       EGL_NONE};
-    EGLConfig config;
-    EGLint count = 0;
-    if (!eglChooseConfig(eglDisplay, configAttributes, &config, 1, &count) || count < 1) continue;
-    const EGLint surfaceAttributes[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
-    const EGLint contextAttributes[] = {EGL_CONTEXT_CLIENT_VERSION, version, EGL_NONE};
-    eglSurface = eglCreatePbufferSurface(eglDisplay, config, surfaceAttributes);
-    eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttributes);
-    if (eglSurface != EGL_NO_SURFACE && eglContext != EGL_NO_CONTEXT &&
-        eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext))
-      return createFramebuffer(width, height);
-    if (eglContext != EGL_NO_CONTEXT) eglDestroyContext(eglDisplay, eglContext);
-    if (eglSurface != EGL_NO_SURFACE) eglDestroySurface(eglDisplay, eglSurface);
-    eglContext = EGL_NO_CONTEXT;
-    eglSurface = EGL_NO_SURFACE;
-  }
-  eglDisplay = EGL_NO_DISPLAY;
-  return false;
 }
 static void notifyGeometry(const retro_game_geometry& geometry) {
   float aspect = geometry.aspect_ratio > 0 ? geometry.aspect_ratio
@@ -221,32 +110,14 @@ static bool environment(unsigned command, void* data) {
       return true;
     case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS:
       return true;
-    case RETRO_ENVIRONMENT_SET_HW_RENDER: {
-      auto* callback = static_cast<retro_hw_render_callback*>(data);
-      if (callback->context_type != RETRO_HW_CONTEXT_OPENGLES2 &&
-          callback->context_type != RETRO_HW_CONTEXT_OPENGLES3 &&
-          callback->context_type != RETRO_HW_CONTEXT_OPENGLES_VERSION)
-        return false;
-      callback->get_current_framebuffer = currentFramebuffer;
-      callback->get_proc_address = procAddress;
-      hw = *callback;
-      hwRequested = true;
-      return true;
-    }
-    case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
-      *static_cast<unsigned*>(data) = RETRO_HW_CONTEXT_OPENGLES3;
-      return true;
-    case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
-      return true;
+    // No RETRO_ENVIRONMENT_SET_HW_RENDER: OpenGL ES proved unreliable on the target handhelds,
+    // so cores that offer both use their software renderer.
     case RETRO_ENVIRONMENT_SET_GEOMETRY:
       notifyGeometry(*static_cast<const retro_game_geometry*>(data));
       return true;
     case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO: {
       auto* info = static_cast<const retro_system_av_info*>(data);
       if (info->timing.fps > 1) targetFps = info->timing.fps;
-      if (fbo && (info->geometry.max_width > fboWidth || info->geometry.max_height > fboHeight))
-        createFramebuffer(std::max(info->geometry.max_width, fboWidth),
-                          std::max(info->geometry.max_height, fboHeight));
       notifyGeometry(info->geometry);
       return true;
     }
@@ -268,38 +139,11 @@ static bool environment(unsigned command, void* data) {
   }
 }
 static void video(const void* data, unsigned width, unsigned height, size_t pitch) {
-  if (!data || !activity) return;
+  if (!data || data == RETRO_HW_FRAME_BUFFER_VALID || !activity) return;
   JNIEnv* env = nullptr;
   vm->GetEnv((void**)&env, JNI_VERSION_1_6);
   if (!env) return;
-  std::vector<jint> argb;
-  if (data == RETRO_HW_FRAME_BUFFER_VALID) {
-    if (!fbo) return;
-    width = std::min(width, fboWidth);
-    height = std::min(height, fboHeight);
-    if (!width || !height) return;
-    readback.resize(width * height);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, readback.data());
-    argb.resize(width * height);
-    for (unsigned y = 0; y < height; y++) {
-      // OpenGL rows start at the bottom unless the core says otherwise.
-      const uint32_t* row = &readback[(hw.bottom_left_origin ? height - 1 - y : y) * width];
-      for (unsigned x = 0; x < width; x++) {
-        uint32_t p = row[x];  // bytes R, G, B, A
-        argb[y * width + x] =
-            (jint)(0xff000000u | ((p & 0xff) << 16) | (p & 0xff00) | ((p >> 16) & 0xff));
-      }
-    }
-    jintArray pixels = env->NewIntArray(argb.size());
-    env->SetIntArrayRegion(pixels, 0, argb.size(), argb.data());
-    env->CallVoidMethod(activity, frameMethod, pixels, (jint)width, (jint)height);
-    env->DeleteLocalRef(pixels);
-    if (env->ExceptionCheck()) env->ExceptionClear();
-    return;
-  }
-  argb.resize(width * height);
+  std::vector<jint> argb(width * height);
   for (unsigned y = 0; y < height; y++)
     for (unsigned x = 0; x < width; x++) {
       unsigned p = 0;
@@ -486,8 +330,6 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
   env->ReleaseStringUTFChars(romPath, rp);
   env->ReleaseStringUTFChars(workPath, wp);
   env->ReleaseStringUTFChars(savePath, sp);
-  hw = {};
-  hwRequested = false;
   targetFps = 60.0;
   pointerDown = false;
   vm = nullptr;
@@ -555,20 +397,6 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
       error = "Core could not load this game";
     } else {
       av(&info);
-      if (hwRequested) {
-        unsigned width = std::max(info.geometry.max_width, info.geometry.base_width);
-        unsigned height = std::max(info.geometry.max_height, info.geometry.base_height);
-        if (!width || !height) {
-          width = 640;
-          height = 480;
-        }
-        if (!createContext(width, height)) {
-          error = "OpenGL ES is not available";
-          unload();
-        } else if (hw.context_reset) {
-          hw.context_reset();
-        }
-      }
     }
     if (error.empty()) {
       notifyGeometry(info.geometry);
@@ -633,12 +461,9 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
       flushBattery(sram, memoryData, memorySize);
       flushBattery(rtc, memoryData, memorySize);
       ra::gameUnloaded();
-      if (hwRequested && hw.context_destroy) hw.context_destroy();
       unload();
     }
     deinit();
-    destroyContext();
-    hwRequested = false;
   }
   dlclose(handle);
   handle = nullptr;

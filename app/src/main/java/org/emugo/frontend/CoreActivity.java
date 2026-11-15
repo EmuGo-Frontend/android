@@ -149,6 +149,11 @@ public final class CoreActivity extends Activity {
       } catch (IOException e) {
         throw new CoreFailure(e.getMessage());
       }
+      if ("n64".equals(system)) {
+        // The host draws in software only, so parallel_n64 uses its software RDP.
+        nativeSetVariable("parallel-n64-gfxplugin", "angrylion");
+        nativeSetVariable("parallel-n64-rspplugin", "auto");
+      }
       raActive = RaBridge.prepare(this, library, system, raListener);
       main.post(() -> ((ViewGroup) loading.getParent()).removeView(loading));
       String error = nativeRun(this, core.getAbsolutePath(), rom.getAbsolutePath(),

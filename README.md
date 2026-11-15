@@ -38,7 +38,7 @@ Settings > Emulation > Built-in emulators turns the built-in emulators off for e
 | Game Boy Advance | `gba` | mGBA | |
 | NES | `nes` | Nestopia | |
 | Super Nintendo | `snes` | Snes9x | |
-| Nintendo 64 | `n64` | Mupen64Plus-Next (OpenGL ES) | Mupen64Plus FZ |
+| Nintendo 64 | `n64` | parallel_n64 (angrylion software renderer) | Mupen64Plus FZ |
 | Nintendo DS | `nds` | melonDS DS (touch screen works) | melonDS |
 | Virtual Boy | `virtualboy` | Beetle VB | |
 | Pokémon Mini | `pokemini` | PokeMini | |
@@ -46,8 +46,8 @@ Settings > Emulation > Built-in emulators turns the built-in emulators off for e
 | Genesis, Master System, Game Gear, SG-1000 | `genesis`, `mastersystem`, `gamegear`, `sg-1000` | Genesis Plus GX | |
 | Sega CD | `segacd` | Genesis Plus GX | |
 | Sega 32X | `sega32x` | PicoDrive | |
-| Saturn | `saturn` | Yaba Sanshiro (OpenGL ES) | Yaba Sanshiro 2 |
-| Dreamcast | `dreamcast` | Flycast (OpenGL ES) | Redream, Flycast |
+| Saturn | `saturn` | | Yaba Sanshiro 2 |
+| Dreamcast | `dreamcast` | | Redream, Flycast |
 | PC Engine, PC Engine CD | `pcengine`, `pcenginecd` | Beetle PCE Fast | |
 | Neo Geo Pocket (Color) | `ngp`, `ngpc` | Beetle NeoPop | |
 | WonderSwan (Color) | `wonderswan`, `wonderswancolor` | Beetle Cygne | |
@@ -58,7 +58,7 @@ Settings > Emulation > Built-in emulators turns the built-in emulators off for e
 | DOS | `dos` | DOSBox Pure | |
 | ScummVM | `scummvm` | ScummVM | ScummVM |
 | PlayStation | `psx` | PCSX ReARMed | DuckStation |
-| PSP | `psp` | PPSSPP (OpenGL ES) | PPSSPP |
+| PSP | `psp` | | PPSSPP |
 | PS2 | `ps2` | | NetherSX2 |
 | PS3 | `ps3` | | aPS3e, RPCSX |
 | PS Vita | `psvita` | | Vita3K |
@@ -69,7 +69,7 @@ Settings > Emulation > Built-in emulators turns the built-in emulators off for e
 | Xbox 360 | `xbox360` | | aX360e |
 | Xbox | `xbox` | | none for Android yet |
 
-Discs, PSP and DS games, arcade sets and DOS archives are read in place, without copying them into the app. A .cue or .gdi brings its tracks along. Arcade clones find their parent set when it sits in the same folder. ScummVM games keep their own folder with a `.scummvm` file inside. MSX, PSP and ScummVM download libretro's system files once, like cores.
+Discs, DS games, arcade sets and DOS archives are read in place, without copying them into the app. A .cue or .gdi brings its tracks along. Arcade clones find their parent set when it sits in the same folder. ScummVM games keep their own folder with a `.scummvm` file inside. MSX and ScummVM download libretro's system files once, like cores.
 
 ## Your ROMs folder
 
@@ -100,8 +100,6 @@ No BIOS is included. Put your own in `ROMs/bios/`:
 | `ps1.bin` | PlayStation |
 | `bios7.bin`, `bios9.bin`, `firmware.bin` | Nintendo DS (optional) |
 | `bios_CD_U.bin`, `bios_CD_E.bin`, `bios_CD_J.bin` | Sega CD |
-| `saturn_bios.bin` | Saturn (optional) |
-| `dc_boot.bin`, `dc_flash.bin` | Dreamcast (optional) |
 | `syscard3.pce` | PC Engine CD |
 | `lynxboot.img` | Atari Lynx |
 | `7800 BIOS (U).rom` | Atari 7800 (optional) |
@@ -180,7 +178,7 @@ EmuGo! works well with [Syncthing](https://play.google.com/store/apps/details?id
 
 ## Known limits
 
-- OpenGL ES cores (N64, Saturn, Dreamcast, PSP) draw offscreen and each frame is copied to the screen, which costs a little speed compared with RetroArch.
+- The built-in host draws in software only. N64 uses a software renderer and does not reach full speed in every game; Saturn, Dreamcast and PSP go to a standalone app or RetroArch.
 - Only the first controller is connected to the built-in host.
 - Standalone emulators decide for themselves how they handle launch requests, so some versions may not open games directly.
 
