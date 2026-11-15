@@ -48,7 +48,7 @@
     <string name="flavor">Variante</string>
     <string name="techdweeb_color">TechDweeb-Farbe</string>
     <string name="wallpaper">Hintergrundbild</string>
-    <string name="custom_background">Eigenes Hintergrundbild</string>
+    <string name="custom_background">Eigener Hintergrund</string>
     <string name="orange">Orange</string>
     <string name="purple">Lila</string>
     <string name="black">Schwarz</string>
@@ -249,6 +249,7 @@
     <string name="not_used_by_your_library">Von deiner Bibliothek nicht verwendet</string>
     <string name="remove_x">%s entfernen?</string>
     <string name="remove_core_message">Er wird erneut heruntergeladen, sobald ein Spiel ihn braucht.</string>
+    <string name="change">Ändern</string>
     <string name="remove">Entfernen</string>
     <string name="calculating">Wird berechnet…</string>
     <string name="cores">Cores</string>

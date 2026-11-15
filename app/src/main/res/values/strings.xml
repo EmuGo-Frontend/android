@@ -249,6 +249,7 @@
     <string name="not_used_by_your_library">Not used by your library</string>
     <string name="remove_x">Remove %s?</string>
     <string name="remove_core_message">It is downloaded again the next time a game needs it.</string>
+    <string name="change">Change</string>
     <string name="remove">Remove</string>
     <string name="calculating">Calculating…</string>
     <string name="cores">Cores</string>

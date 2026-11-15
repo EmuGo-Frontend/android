@@ -70,6 +70,8 @@ public class MainActivity extends Activity {
   private int menuGeneration;
   private Library library;
   private LinearLayout root, body, top, heading;
+  private Wallpaper.Video videoWallpaper;
+  private boolean isResumed;
   private LinearLayout controlHints;
   private HorizontalScrollView hintBar;
   private RowScrollView scroll;
@@ -176,7 +178,10 @@ public class MainActivity extends Activity {
   @Override
   protected void onPause() {
     super.onPause();
+    isResumed = false;
     banner.deactivate();
+    if (videoWallpaper != null)
+      videoWallpaper.pause();
   }
   @Override
   protected void onNewIntent(Intent intent) {
@@ -203,7 +208,10 @@ public class MainActivity extends Activity {
   @Override
   protected void onResume() {
     super.onResume();
+    isResumed = true;
     banner.activate();
+    if (videoWallpaper != null)
+      videoWallpaper.resume();
     UpdateChecker.resumePendingInstall(this);
     immersive();
     Brightness.apply(this, getWindow());
@@ -233,6 +241,8 @@ public class MainActivity extends Activity {
   @Override
   protected void onDestroy() {
     handler.removeCallbacksAndMessages(null);
+    if (videoWallpaper != null)
+      videoWallpaper.release();
     if (second != null)
       second.dismiss();
     super.onDestroy();
@@ -280,8 +290,15 @@ public class MainActivity extends Activity {
     root = new LinearLayout(this);
     root.setOrientation(1);
     root.setBackgroundColor(bg);
-    setContentView(root);
-    Wallpaper.apply(this, library, root);
+    if (videoWallpaper != null)
+      videoWallpaper.release();
+    android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+    frame.setBackgroundColor(bg);
+    frame.addView(root, new android.widget.FrameLayout.LayoutParams(-1, -1));
+    setContentView(frame);
+    videoWallpaper = Wallpaper.apply(this, library, frame, root);
+    if (videoWallpaper != null && !isResumed)
+      videoWallpaper.pause();
     top = new LinearLayout(this);
     top.setGravity(Gravity.CENTER_VERTICAL);
     top.setPadding(dp(18), 0, dp(18), 0);
@@ -816,11 +833,32 @@ public class MainActivity extends Activity {
                       "blue", "dmg"},
                   "techColor"));
     row(R.string.custom_background, "", () -> {
-      Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
-                          .setType("image/*")
-                          .addCategory(Intent.CATEGORY_OPENABLE);
-      startActivityForResult(intent, PICK_WALLPAPER);
+      if (library.get("wallpaper", "").isEmpty()) {
+        pickWallpaper();
+        return;
+      }
+      new PocketDialog.Builder(this)
+          .setTitle(R.string.custom_background)
+          .setItems(new String[] {getString(R.string.change), getString(R.string.remove)},
+              (d, w) -> {
+                d.dismiss();
+                if (w == 0) {
+                  pickWallpaper();
+                  return;
+                }
+                library.put("wallpaper", "");
+                render();
+                appearanceSettings();
+              })
+          .show();
     });
+  }
+  private void pickWallpaper() {
+    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                        .setType("*/*")
+                        .putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"image/*", "video/*"})
+                        .addCategory(Intent.CATEGORY_OPENABLE);
+    startActivityForResult(intent, PICK_WALLPAPER);
   }
   private void librarySettings() {
     screen = Screen.LIBRARY_SETTINGS;
