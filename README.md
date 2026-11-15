@@ -36,7 +36,7 @@ Cores are downloaded the first time you start a game for a system.
 
 PlayStation discs (CUE/BIN, CHD, PBP) are read in place, without copying them into the app.
 
-PS2, PSP, Nintendo DS, GameCube, Wii, 3DS and Switch games open in an installed standalone emulator, such as NetherSX2, PPSSPP, melonDS, Dolphin, Azahar or Eden. If you prefer RetroArch for the built-in systems, turn on Settings > Emulation > Use RetroArch.
+PS2, PSP, Nintendo DS, GameCube, Wii, 3DS and Switch games open in an installed standalone emulator, such as NetherSX2, PPSSPP, melonDS, Dolphin, Azahar or Eden. If you prefer RetroArch for the built-in systems, turn on Settings > Emulation > Use RetroArch. When no standalone emulator is installed, or a built-in core cannot start, EmuGo! opens the game in RetroArch instead, as long as RetroArch is installed.
 
 ## Your ROMs folder
 
@@ -53,7 +53,7 @@ ROMs/
     └── cores/
 ```
 
-Battery saves are written as soon as a game changes them, and again when EmuGo! goes to the background. Game Boy Color cartridge clocks are kept in a matching `.rtc` file. Automatic save states are off by default.
+Battery saves are written as soon as a game changes them, and again when EmuGo! goes to the background. Game Boy Color cartridge clocks are kept in a matching `.rtc` file. Automatic save states are off by default. The pause menu can turn them on or off for a single game, and Settings > Emulation resets all of those per-game choices at once.
 
 Saves and states from RetroArch can be imported from Settings > Library.
 
