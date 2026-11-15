@@ -74,7 +74,13 @@ public final class CoreActivity extends Activity {
     i.putExtra("title", game.title);
     i.putExtra("fileTitle", game.fileTitle);
     i.putExtra("saveStem", game.saveStem);
-    from.startActivity(i);
+    // No slide animation into the game; finish() does the same on the way out.
+    from.startActivity(i, ActivityOptions.makeCustomAnimation(from, 0, 0).toBundle());
+  }
+  @Override
+  public void finish() {
+    super.finish();
+    if (Build.VERSION.SDK_INT < 34) overridePendingTransition(0, 0);
   }
   @Override
   protected void attachBaseContext(android.content.Context base) {
@@ -83,6 +89,7 @@ public final class CoreActivity extends Activity {
   @Override
   public void onCreate(Bundle state) {
     super.onCreate(state);
+    if (Build.VERSION.SDK_INT >= 34) overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0);
     getWindow().getDecorView().setSystemUiVisibility(5894 | 1024 | 512);
     library = new Library(this);
     Brightness.apply(this, getWindow());
