@@ -31,6 +31,7 @@ public final class CoreActivity extends Activity {
   static native void nativePointer(int x, int y, boolean pressed);
   static native void nativeClearFiles();
   static native void nativeFlush();
+  static native void nativeSaveState();
   private final java.util.concurrent.ExecutorService saveSync =
       java.util.concurrent.Executors.newSingleThreadExecutor();
   private FrameView frame;
@@ -39,7 +40,10 @@ public final class CoreActivity extends Activity {
   private Runnable pauseBack;
   private AudioTrack audio;
   private int bits;
-  private boolean firstHeld, secondHeld, comboTriggered, menuShown;
+  private boolean firstHeld, secondHeld, comboTriggered, menuShown, paused;
+  // Set when the screen locked or the app left the foreground: the pause menu opens on return.
+  private boolean pausedInBackground;
+  private volatile boolean coreRunning;
   private int firstKey, secondKey;
   private Library library;
   private String gameTitle;
@@ -108,6 +112,7 @@ public final class CoreActivity extends Activity {
                                         : KeyEvent.KEYCODE_BUTTON_START;
     playStarted = System.currentTimeMillis();
     updatePresence();
+    setPaused(false); // a pause left over from the previous game
     frame = new FrameView();
     setContentView(frame);
     TextView loading = new TextView(this);
@@ -156,8 +161,14 @@ public final class CoreActivity extends Activity {
       }
       raActive = RaBridge.prepare(this, library, system, raListener);
       main.post(() -> ((ViewGroup) loading.getParent()).removeView(loading));
-      String error = nativeRun(this, core.getAbsolutePath(), rom.getAbsolutePath(),
-          work.getAbsolutePath(), saves.getAbsolutePath(), autoStates);
+      coreRunning = true;
+      String error;
+      try {
+        error = nativeRun(this, core.getAbsolutePath(), rom.getAbsolutePath(),
+            work.getAbsolutePath(), saves.getAbsolutePath(), autoStates);
+      } finally {
+        coreRunning = false;
+      }
       if (!error.isEmpty())
         throw new CoreFailure(error);
       saveSync.shutdown();
@@ -576,10 +587,11 @@ public final class CoreActivity extends Activity {
                     sampleRate * 4 / 12))
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build();
-    if (!menuShown) audio.play();
+    if (!paused) audio.play();
   }
   /** Pauses the core and silences already-buffered audio at the same moment. */
   private void setPaused(boolean value) {
+    paused = value;
     nativePause(value);
     AudioTrack a = audio;
     if (a == null) return;
@@ -608,7 +620,18 @@ public final class CoreActivity extends Activity {
   }
   /** Called by the core thread whenever save RAM was written to the work folder. */
   void onSaveWritten() {
-    saveSync.execute(() -> syncSave(false));
+    syncLater(false);
+  }
+  /** Called by the core thread after it wrote the automatic state on request. */
+  void onStateWritten() {
+    syncLater(true);
+  }
+  private void syncLater(boolean includeState) {
+    try {
+      saveSync.execute(() -> syncSave(includeState));
+    } catch (java.util.concurrent.RejectedExecutionException ignored) {
+      // The game is closing; the final sync covers it.
+    }
   }
   /**
    * Copies the work folder's battery save (and clock) to ROMs/emugo/saves; on exit also the
@@ -1045,18 +1068,26 @@ public final class CoreActivity extends Activity {
   protected void onResume() {
     super.onResume();
     if (raPopup != null) raPopup.activate();
+    if (pausedInBackground) {
+      pausedInBackground = false;
+      menu();
+    }
   }
   @Override
   protected void onPause() {
     super.onPause();
     if (raPopup != null) raPopup.deactivate();
-    nativeFlush(); // write save RAM before Android may kill the backgrounded process
+    if (coreRunning && !isFinishing() && !menuShown) {
+      // Screen lock or leaving the app: the game waits behind the pause menu.
+      setPaused(true);
+      pausedInBackground = true;
+    }
+    // Write save RAM and the automatic state before Android may kill the backgrounded process,
+    // for example while an update installs.
+    nativeFlush();
+    if (!isFinishing()) nativeSaveState();
     // Cores with their own save files are copied out too.
-    if (info != null && info.ownSaves && !saveSync.isShutdown())
-      try {
-        saveSync.execute(() -> syncSave(false));
-      } catch (java.util.concurrent.RejectedExecutionException ignored) {
-      }
+    if (info != null && info.ownSaves) syncLater(false);
   }
   private static int axis(float value) {
     if (Math.abs(value) < 0.12f) return 0;

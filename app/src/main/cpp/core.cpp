@@ -21,11 +21,12 @@
 static JavaVM* vm = nullptr;
 static jobject activity = nullptr;
 static jmethodID frameMethod = nullptr, audioMethod = nullptr, audioFormatMethod = nullptr,
-                 savedMethod = nullptr, geometryMethod = nullptr;
+                 savedMethod = nullptr, geometryMethod = nullptr, stateMethod = nullptr;
 static std::atomic<bool> running{false};
 static std::atomic<bool> paused{false};
 static std::atomic<bool> saveStatesEnabled{false};
 static std::atomic<bool> flushRequested{false};
+static std::atomic<bool> stateRequested{false};
 static std::atomic<unsigned> buttons{0};
 static std::atomic<int16_t> axes[4];
 // Touch screen as the libretro pointer (DS): -0x7fff..0x7fff across the picture.
@@ -253,6 +254,28 @@ static void notifySaved(JNIEnv* env) {
     if (env->ExceptionCheck()) env->ExceptionClear();
   }
 }
+static void notifyState(JNIEnv* env) {
+  if (env && activity && stateMethod) {
+    env->CallVoidMethod(activity, stateMethod);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+  }
+}
+// Through a temporary file, so a process killed mid-write never leaves a truncated state.
+static bool writeState(const std::string& path, size_t (*serializeSize)(),
+                       bool (*serialize)(void*, size_t)) {
+  if (!serializeSize || !serialize) return false;
+  size_t size = serializeSize();
+  if (!size) return false;
+  std::vector<char> state(size);
+  if (!serialize(state.data(), size)) return false;
+  std::string temp = path + ".tmp";
+  {
+    std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+    out.write(state.data(), size);
+    if (!out) return false;
+  }
+  return std::rename(temp.c_str(), path.c_str()) == 0;
+}
 template <typename T>
 static T symbol(const char* name) {
   return reinterpret_cast<T>(dlsym(handle, name));
@@ -303,6 +326,10 @@ extern "C" JNIEXPORT void JNICALL Java_org_emugo_frontend_CoreActivity_nativeFlu
                                                                                     jclass) {
   flushRequested = true;
 }
+extern "C" JNIEXPORT void JNICALL Java_org_emugo_frontend_CoreActivity_nativeSaveState(JNIEnv*,
+                                                                                        jclass) {
+  stateRequested = true;
+}
 extern "C" JNIEXPORT void JNICALL Java_org_emugo_frontend_CoreActivity_nativeStop(JNIEnv*, jclass) {
   running = false;
 }
@@ -341,6 +368,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
   audioFormatMethod = env->GetMethodID(cls, "onAudioFormat", "(I)V");
   savedMethod = env->GetMethodID(cls, "onSaveWritten", "()V");
   geometryMethod = env->GetMethodID(cls, "onGeometry", "(F)V");
+  stateMethod = env->GetMethodID(cls, "onStateWritten", "()V");
   handle = dlopen(core.c_str(), RTLD_NOW | RTLD_LOCAL);
   if (!handle) {
     std::string err = dlerror();
@@ -420,10 +448,10 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
                      content.size(), memoryData,
                      memorySize, memoryDescriptors.empty() ? nullptr : &memoryMap);
       running = true;
-      paused = false;
       auto next = std::chrono::steady_clock::now();
       auto lastCheck = next;
       flushRequested = false;
+      stateRequested = false;
       while (running) {
         auto now = std::chrono::steady_clock::now();
         if (flushRequested.exchange(false) || now - lastCheck > std::chrono::seconds(5)) {
@@ -434,6 +462,9 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
             notifySaved(env);
           }
         }
+        if (stateRequested.exchange(false) && saveStatesEnabled &&
+            writeState(save, serializeSize, serialize))
+          notifyState(env);
         if (paused) {
           ra::idle();
           std::this_thread::sleep_for(std::chrono::milliseconds(16));
@@ -448,16 +479,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_emugo_frontend_CoreActivity_native
         if (next < std::chrono::steady_clock::now() - std::chrono::milliseconds(100))
           next = std::chrono::steady_clock::now();
       }
-      if (saveStatesEnabled && serializeSize && serialize) {
-        size_t size = serializeSize();
-        if (size) {
-          std::vector<char> state(size);
-          if (serialize(state.data(), size)) {
-            std::ofstream out(save, std::ios::binary);
-            out.write(state.data(), size);
-          }
-        }
-      }
+      if (saveStatesEnabled) writeState(save, serializeSize, serialize);
       flushBattery(sram, memoryData, memorySize);
       flushBattery(rtc, memoryData, memorySize);
       ra::gameUnloaded();

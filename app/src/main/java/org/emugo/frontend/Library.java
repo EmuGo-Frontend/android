@@ -299,7 +299,9 @@ final class Library {
   final Context context;
   final SharedPreferences local;
   volatile Uri root;
-  JSONObject settings;
+  // Shared by every Library in the process: separate copies overwrote each other's changes,
+  // such as a game's settings changed in the pause menu.
+  private static volatile JSONObject settings = new JSONObject();
   private volatile Map<String, List<Item>> indexedFolders = new HashMap<>();
   private volatile boolean hasScanned;
   private final Map<String, List<Game>> gameCache = new HashMap<>();
@@ -347,21 +349,26 @@ final class Library {
     loadIndex();
   }
   void loadSettings() {
-    settings = new JSONObject();
+    JSONObject loaded = new JSONObject();
     try {
-      String raw = local.getString("settings", "{}");
-      settings = new JSONObject(raw);
+      loaded = new JSONObject(local.getString("settings", "{}"));
+    } catch (Exception ignored) {
+    }
+    try {
       Uri file = findChild(ensureEmugo(), "settings.json");
       if (file != null) {
         try (InputStream in = context.getContentResolver().openInputStream(file)) {
+          // Read to the end: one read() may return only part of the file.
+          ByteArrayOutputStream bytes = new ByteArrayOutputStream();
           byte[] b = new byte[65536];
-          int n = in.read(b);
-          if (n > 0)
-            settings = new JSONObject(new String(b, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+          int n;
+          while ((n = in.read(b)) > 0) bytes.write(b, 0, n);
+          if (bytes.size() > 0) loaded = new JSONObject(bytes.toString("UTF-8"));
         }
       }
     } catch (Exception ignored) {
     }
+    settings = loaded;
   }
   void put(String key, Object value) {
     try {
