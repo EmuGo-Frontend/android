@@ -47,14 +47,8 @@ final class DiscordPresence {
   // Desired presence, applied whenever the client becomes ready.
   private static String details, state, largeImage, largeText;
   private static long startMillis;
-  // Presence is only shown while an EmuGo! activity is resumed: a locked screen or another app
-  // in front clears it.
-  private static int resumed;
-  private static boolean visible;
-  private static final Runnable hide = () -> {
-    visible = false;
-    if (available && connected()) nativeClearPresence();
-  };
+  // Presence is only shown while an EmuGo! activity is in front (see Foreground): a locked
+  // screen or another app clears it.
 
   private static native boolean nativeInit(long id);
   private static native void nativeGetToken(long id, String code, String verifier, String redirect);
@@ -85,37 +79,16 @@ final class DiscordPresence {
     if (initialized) return;
     initialized = true;
     app = activity.getApplicationContext();
-    // init runs in the launcher's onCreate; its onResume is counted by the callback below.
-    resumed = 0;
-    visible = true;
-    ((android.app.Application) app).registerActivityLifecycleCallbacks(
-        new android.app.Application.ActivityLifecycleCallbacks() {
-          @Override
-          public void onActivityResumed(Activity a) {
-            resumed++;
-            main.removeCallbacks(hide);
-            if (!visible) {
-              visible = true;
-              apply(app);
-            }
-          }
-          @Override
-          public void onActivityPaused(Activity a) {
-            resumed = Math.max(0, resumed - 1);
-            // A short grace period covers switching between the launcher and a game.
-            if (resumed == 0) main.postDelayed(hide, 1500);
-          }
-          @Override
-          public void onActivityCreated(Activity a, android.os.Bundle b) {}
-          @Override
-          public void onActivityStarted(Activity a) {}
-          @Override
-          public void onActivityStopped(Activity a) {}
-          @Override
-          public void onActivitySaveInstanceState(Activity a, android.os.Bundle b) {}
-          @Override
-          public void onActivityDestroyed(Activity a) {}
-        });
+    Foreground.addListener(new Foreground.Listener() {
+      @Override
+      public void onReturned() {
+        apply(app);
+      }
+      @Override
+      public void onLeft() {
+        if (available && connected()) nativeClearPresence();
+      }
+    });
     try {
       Class<?> cls = Class.forName("com.discord.socialsdk.DiscordSocialSdkInit");
       cls.getMethod("setEngineActivity", Activity.class).invoke(null, activity);
@@ -187,7 +160,7 @@ final class DiscordPresence {
 
   static void apply(Context context) {
     if (!available || !connected()) return;
-    if (!visible || !enabled(context) || details == null) {
+    if (!Foreground.visible() || !enabled(context) || details == null) {
       nativeClearPresence();
       return;
     }

@@ -49,7 +49,7 @@ public final class CoreActivity extends Activity {
   private String system;
   private boolean analogSystem;
   private int axisBits;
-  private RaPopup raPopup;
+  private Banner raPopup;
   private long playStarted;
   private String raGameImage;
   private final Runnable presenceTicker = new Runnable() {
@@ -100,7 +100,7 @@ public final class CoreActivity extends Activity {
     loading.setTextColor(-1);
     loading.setGravity(Gravity.CENTER);
     addContentView(loading, new ViewGroup.LayoutParams(-1, -1));
-    raPopup = new RaPopup(this);
+    raPopup = new Banner(this);
     new Thread(() -> prepare(loading), "EmuGo-core").start();
   }
   private void prepare(TextView loading) {
@@ -751,8 +751,14 @@ public final class CoreActivity extends Activity {
     menu();
   }
   @Override
+  protected void onResume() {
+    super.onResume();
+    if (raPopup != null) raPopup.activate();
+  }
+  @Override
   protected void onPause() {
     super.onPause();
+    if (raPopup != null) raPopup.deactivate();
     nativeFlush(); // write save RAM before Android may kill the backgrounded process
   }
   private static int axis(float value) {

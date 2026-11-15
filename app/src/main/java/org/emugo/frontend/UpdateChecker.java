@@ -264,6 +264,33 @@ final class UpdateChecker {
     if (!newer(context, release)) return;
     if (release.version.equals(prefs(context).getString("updateNotified", ""))) return;
     prefs(context).edit().putString("updateNotified", release.version).apply();
+    post(context, release);
+  }
+
+  /**
+   * When the user comes back to EmuGo! (screen unlocked, back from another app), a pending
+   * update is announced once more for that return. Skipped while the notification is still
+   * showing, so it never piles up.
+   */
+  static void remind(Context context) {
+    Context app = context.getApplicationContext();
+    new Thread(() -> {
+      try {
+        NotificationManager manager = app.getSystemService(NotificationManager.class);
+        if (manager == null) return;
+        for (android.service.notification.StatusBarNotification shown :
+            manager.getActiveNotifications())
+          if (shown.getId() == NOTIFICATION_ID) return;
+        Release release = fetch(app);
+        if (!newer(app, release)) return;
+        prefs(app).edit().putString("updateNotified", release.version).apply();
+        post(app, release);
+      } catch (Exception ignored) {
+      }
+    }, "EmuGo-update-remind").start();
+  }
+
+  private static void post(Context context, Release release) {
     NotificationManager manager = context.getSystemService(NotificationManager.class);
     if (manager == null) return;
     L10n.setLanguage(new Library(context).get("language", "System"));

@@ -80,6 +80,7 @@ public class MainActivity extends Activity {
   private android.graphics.Typeface boldFont;
   private final Handler handler = new Handler(Looper.getMainLooper());
   private Presentation second;
+  private Banner banner;
   private static final int PICK_ROMS = 41;
   private static final int PICK_WALLPAPER = 42;
   private static final int PICK_RETROARCH_SAVES = 43;
@@ -105,6 +106,16 @@ public class MainActivity extends Activity {
     }
     immersive();
     render();
+    banner = new Banner(this);
+    Foreground.register(getApplication());
+    Foreground.addListener(new Foreground.Listener() {
+      @Override
+      public void onReturned() {
+        UpdateChecker.remind(MainActivity.this);
+      }
+      @Override
+      public void onLeft() {}
+    });
     DiscordPresence.init(this);
     DiscordPresence.setListener(() -> {
       if (screen == Screen.DISCORD) {
@@ -145,6 +156,11 @@ public class MainActivity extends Activity {
         new String[] {android.Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
   }
   @Override
+  protected void onPause() {
+    super.onPause();
+    banner.deactivate();
+  }
+  @Override
   protected void onNewIntent(Intent intent) {
     super.onNewIntent(intent);
     setIntent(intent);
@@ -160,6 +176,7 @@ public class MainActivity extends Activity {
   @Override
   protected void onResume() {
     super.onResume();
+    banner.activate();
     UpdateChecker.resumePendingInstall(this);
     immersive();
     Brightness.apply(this, getWindow());
@@ -279,6 +296,8 @@ public class MainActivity extends Activity {
         : layout.equals("Nintendo") ? "R" : "RB", "Infocenter");
     controlHint(layout.equals("PlayStation") ? "L2/R2"
         : layout.equals("Nintendo") ? "ZL/ZR" : "LT/RT", "Jump");
+    if (screen == Screen.INFOCENTER)
+      controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", "Clear");
     if (screen == Screen.RA_PROFILE || screen == Screen.RA_GAME) {
       controlHint(layout.equals("PlayStation") ? "PS_SQUARE" : "X", "Reload");
       controlHint(layout.equals("PlayStation") ? "OPTIONS" : "START", "Play");
@@ -1220,6 +1239,7 @@ public class MainActivity extends Activity {
         ()
             -> choose("EmuGo! on second screen",
                 new String[] {"Off", "Primary", "Secondary", "Both"}, "secondScreen"));
+    booleanOption("Notification banners", "notificationBanners", true);
     row("Set as default launcher", "", this::requestHome);
     row("Android system settings", "", () -> startActivity(new Intent(Settings.ACTION_SETTINGS)));
     row("Check for updates", "", () -> UpdateChecker.check(this, true));
@@ -1598,6 +1618,16 @@ public class MainActivity extends Activity {
       return;
     }
     visible.sort((a, b) -> Long.compare(b.getPostTime(), a.getPostTime()));
+    infocenterKeys.clear();
+    boolean anyClearable = false;
+    for (android.service.notification.StatusBarNotification item : visible)
+      anyClearable |= item.isClearable();
+    if (anyClearable)
+      row("Clear all", "", () -> {
+        NotificationService.dismissAll();
+        focusedPositions.remove(Screen.INFOCENTER);
+        refreshInfocenterSoon();
+      });
     for (android.service.notification.StatusBarNotification item : visible) {
       android.app.Notification notification = item.getNotification();
       String app = item.getPackageName();
@@ -1611,7 +1641,9 @@ public class MainActivity extends Activity {
           notification.extras.getCharSequence(android.app.Notification.EXTRA_TITLE, app));
       String detail = String.valueOf(
           notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT, ""));
-      row(title, app + "  ·  " + detail, () -> {
+      View notificationRow = richRow(new RichRow.Entry(title,
+              detail.isEmpty() || detail.equals("null") ? app : app + "  ·  " + detail, null, null,
+              false), () -> {
         PendingIntent open = notification.contentIntent;
         if (open == null) {
           PocketNotice.show(this, "This notification has no open action");
@@ -1626,7 +1658,26 @@ public class MainActivity extends Activity {
           PocketNotice.show(this, "This notification can no longer be opened");
         }
       });
+      if (item.isClearable()) infocenterKeys.put(notificationRow, item.getKey());
     }
+  }
+  private final Map<View, String> infocenterKeys = new HashMap<>();
+  /** X / Square on a focused notification dismisses it. */
+  private void dismissFocusedNotification() {
+    View focused = body.findFocus();
+    String key = focused == null ? null : infocenterKeys.get(focused);
+    if (key == null) return;
+    rememberSelection(focused);
+    NotificationService.dismiss(key);
+    refreshInfocenterSoon();
+  }
+  // Cancelling is asynchronous; rebuild once the listener has the new state.
+  private void refreshInfocenterSoon() {
+    handler.postDelayed(() -> {
+      if (screen != Screen.INFOCENTER) return;
+      infocenter();
+      restoreSelection(Screen.INFOCENTER, false);
+    }, 300);
   }
   private void toggleInfocenter() {
     if (screen == Screen.INFOCENTER) {
@@ -1852,6 +1903,11 @@ public class MainActivity extends Activity {
         && (screen == Screen.RA_PROFILE || screen == Screen.RA_GAME)) {
       if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
         playRetroAchievementsGame();
+      return true;
+    }
+    if (key == KeyEvent.KEYCODE_BUTTON_X && !firstHeld && screen == Screen.INFOCENTER) {
+      if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
+        dismissFocusedNotification();
       return true;
     }
     if (key == KeyEvent.KEYCODE_BUTTON_X && !firstHeld

@@ -330,6 +330,10 @@ final class L10n {
     add("Emulator cores and the Libretro API", "Emulator-Cores und die Libretro-API");
     add("Font by Vernon Adams, Cyreal and Jacques Le Bailly", "Schrift von Vernon Adams, Cyreal und Jacques Le Bailly");
     add("Icons by Paweł Kuna", "Symbole von Paweł Kuna");
+    // Notification banners and clearing.
+    add("Clear all", "Alle löschen");
+    add("Clear", "Löschen");
+    add("Notification banners", "Benachrichtigungsbanner");
   }
 
   private L10n() {}
