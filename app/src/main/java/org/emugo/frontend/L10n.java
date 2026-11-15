@@ -334,6 +334,9 @@ final class L10n {
     add("Clear all", "Alle löschen");
     add("Clear", "Löschen");
     add("Notification banners", "Benachrichtigungsbanner");
+    add("GitHub is limiting update checks right now. Try again in %d minutes.",
+        "GitHub begrenzt Update-Prüfungen gerade. Versuche es in %d Minuten erneut.");
+    add("The changelog is on the release page: %s", "Die Änderungen stehen auf der Release-Seite: %s");
   }
 
   private L10n() {}

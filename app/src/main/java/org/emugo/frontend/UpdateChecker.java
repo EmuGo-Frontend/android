@@ -42,13 +42,25 @@ final class UpdateChecker {
 
   /** Latest published release, or null when the repository has none yet. */
   static Release fetch(Context context) throws IOException {
+    SharedPreferences prefs = prefs(context);
     HttpURLConnection connection = (HttpURLConnection) new URL(ENDPOINT).openConnection();
     connection.setConnectTimeout(10000);
     connection.setReadTimeout(15000);
     connection.setRequestProperty("Accept", "application/vnd.github+json");
     connection.setRequestProperty("User-Agent", "EmuGo-Android/" + Version.name(context));
+    // Conditional request: an unchanged release answers 304, which GitHub does not count
+    // against the hourly limit for anonymous clients.
+    String etag = prefs.getString("releaseEtag", null);
+    String cached = prefs.getString("releaseJson", null);
+    if (etag != null && cached != null) connection.setRequestProperty("If-None-Match", etag);
     int status = connection.getResponseCode();
+    if (status == 304 && cached != null) return parse(cached);
     if (status == 404) return null;
+    if (status == 403 || status == 429) {
+      Release fallback = fromReleasePage(context, cached);
+      if (fallback != null) return fallback;
+      throw new RateLimitException(context, connection.getHeaderField("X-RateLimit-Reset"));
+    }
     if (status != 200) throw new IOException(L10n.format(context, "GitHub API returned %d", status));
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     try (InputStream in = connection.getInputStream()) {
@@ -56,8 +68,27 @@ final class UpdateChecker {
       int n;
       while ((n = in.read(b)) > 0) output.write(b, 0, n);
     }
+    String json = output.toString("UTF-8");
+    prefs.edit()
+        .putString("releaseJson", json)
+        .putString("releaseEtag", connection.getHeaderField("ETag"))
+        .apply();
+    return parse(json);
+  }
+
+  /** The last release the API returned, if any. */
+  static Release cachedRelease(Context context) {
+    String cached = prefs(context).getString("releaseJson", null);
     try {
-      JSONObject json = new JSONObject(output.toString("UTF-8"));
+      return cached == null ? null : parse(cached);
+    } catch (IOException e) {
+      return null;
+    }
+  }
+
+  private static Release parse(String text) throws IOException {
+    try {
+      JSONObject json = new JSONObject(text);
       Release release = new Release();
       release.version = json.optString("tag_name", "");
       release.notes = json.optString("body", "");
@@ -74,6 +105,54 @@ final class UpdateChecker {
       return release;
     } catch (org.json.JSONException e) {
       throw new IOException(e.getMessage());
+    }
+  }
+
+  /**
+   * When the API is rate limited: github.com/.../releases/latest is not, and it redirects to
+   * the newest tag. Release assets follow the EmuGo-&lt;version&gt;.apk naming. The changelog
+   * comes from the last API answer when it is for the same version.
+   */
+  private static Release fromReleasePage(Context context, String cached) {
+    try {
+      HttpURLConnection c = (HttpURLConnection) new URL(
+          "https://github.com/EmuGo-Frontend/android/releases/latest").openConnection();
+      c.setInstanceFollowRedirects(false);
+      c.setConnectTimeout(10000);
+      c.setReadTimeout(15000);
+      c.setRequestProperty("User-Agent", "EmuGo-Android/" + Version.name(context));
+      String location = c.getHeaderField("Location");
+      if (location == null || !location.contains("/releases/tag/")) return null;
+      Release release = new Release();
+      release.version = Uri.decode(location.substring(location.lastIndexOf('/') + 1));
+      release.page = location;
+      release.apkUrl = "https://github.com/EmuGo-Frontend/android/releases/download/"
+          + release.version + "/EmuGo-" + release.version.replaceFirst("^[vV]", "") + ".apk";
+      Release previous = cached == null ? null : parse(cached);
+      release.notes = previous != null && release.version.equals(previous.version)
+          ? previous.notes
+          : L10n.format(context, "The changelog is on the release page: %s", location);
+      return release;
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  /** GitHub's anonymous API limit; the message says when checks work again. */
+  static final class RateLimitException extends IOException {
+    RateLimitException(Context context, String resetEpochSeconds) {
+      super(message(context, resetEpochSeconds));
+    }
+
+    private static String message(Context context, String reset) {
+      long minutes = 60;
+      try {
+        long seconds = Long.parseLong(reset) - System.currentTimeMillis() / 1000;
+        minutes = Math.max(1, (seconds + 59) / 60);
+      } catch (Exception ignored) {
+      }
+      return L10n.format(context,
+          "GitHub is limiting update checks right now. Try again in %d minutes.", minutes);
     }
   }
 
@@ -105,6 +184,8 @@ final class UpdateChecker {
           message(activity, L10n.format(activity, "EmuGo! is up to date (%s)",
               Version.name(activity)));
         }
+      } catch (RateLimitException e) {
+        if (manual) message(activity, e.getMessage());
       } catch (Exception e) {
         if (manual)
           message(activity, L10n.format(activity, "Could not check updates: %s", e.getMessage()));

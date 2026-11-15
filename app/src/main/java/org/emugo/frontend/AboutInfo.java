@@ -59,9 +59,17 @@ final class AboutInfo {
     c.setReadTimeout(15000);
     c.setRequestProperty("Accept", "application/vnd.github+json");
     c.setRequestProperty("User-Agent", "EmuGo-Android/" + Version.name(context));
-    if (c.getResponseCode() == 404)
+    int status = c.getResponseCode();
+    if (status == 404)
       return L10n.text(context, "No release notes for this version");
-    if (c.getResponseCode() != 200) throw new IOException("HTTP " + c.getResponseCode());
+    if (status == 403 || status == 429) {
+      // Rate limited: the updater's last answer covers the latest release.
+      UpdateChecker.Release cached = UpdateChecker.cachedRelease(context);
+      if (cached != null && cached.version.replaceFirst("^[vV]", "").equals(version))
+        return UpdateChecker.changelog(context, cached.notes);
+      throw new UpdateChecker.RateLimitException(context, c.getHeaderField("X-RateLimit-Reset"));
+    }
+    if (status != 200) throw new IOException("HTTP " + status);
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     try (InputStream in = c.getInputStream()) {
       byte[] buffer = new byte[8192];

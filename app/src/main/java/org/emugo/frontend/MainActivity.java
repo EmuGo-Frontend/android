@@ -1267,7 +1267,8 @@ public class MainActivity extends Activity {
       try {
         text = AboutInfo.changelog(this);
       } catch (Exception e) {
-        text = L10n.format(this, "Could not load release notes: %s", String.valueOf(e.getMessage()));
+        text = e instanceof UpdateChecker.RateLimitException ? e.getMessage()
+            : L10n.format(this, "Could not load release notes: %s", String.valueOf(e.getMessage()));
       }
       String notes = text;
       runOnUiThread(() -> new PocketDialog.Builder(this)
